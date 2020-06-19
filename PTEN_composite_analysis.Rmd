@@ -10,8 +10,8 @@ rm(list = ls())
 knitr::opts_chunk$set(echo = TRUE)
 
 set.seed(1234)
-if(!require(reshape2)){install.packages("reshape2")}
-library(reshape2)
+if(!require(reshape)){install.packages("reshape")}
+library(reshape)
 if(!require(ggrepel)){install.packages("ggrepel")}
 library(ggrepel)
 if(!require(uwot)){install.packages("uwot")}
@@ -120,4 +120,743 @@ ggsave(file = "plots/Experiment_score_correlation_plot.pdf", Experiment_score_co
 paste("Pearson's r:",round(cor(combined_5plus$score_orig, combined_5plus$score_fillin, method = "pearson"),2))
 paste("Percent of variance explained:",round(cor(combined_5plus$score_orig, combined_5plus$score_fillin, method = "pearson")^2,2))
 paste("Percent of variance unexplained:",round(1-cor(combined_5plus$score_orig, combined_5plus$score_fillin)^2,2))
+```
+
+# Using all of the available data to ascribe consensus abundance scores
+```{r Determining the best score with all the data}
+combined$score_total <- rowMeans(combined[c("score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15")], na.rm = T)
+combined$count_total <- rowSums(!is.na(combined[c("score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15")]))
+
+combined$sd_total <- rowMeans(cbind(abs(combined$score_total-combined$score1), abs(combined$score_total-combined$score2), abs(combined$score_total-combined$score3), abs(combined$score_total-combined$score4), abs(combined$score_total-combined$score5), abs(combined$score_total-combined$score6), abs(combined$score_total-combined$score7), abs(combined$score_total-combined$score8), abs(combined$score_total-combined$score9), abs(combined$score_total-combined$score10), abs(combined$score_total-combined$score11), abs(combined$score_total-combined$score12),abs(combined$score_total-combined$score13),abs(combined$score_total-combined$score14),abs(combined$score_total-combined$score15)), na.rm = T)
+
+combined$se_total <- combined$sd_total / sqrt(combined$count_total)
+combined$lower_ci_total <- combined$score_total - qnorm(0.975) * combined$se_total
+combined$upper_ci_total <- combined$score_total + qnorm(0.975) * combined$se_total
+```
+
+# Creating a schematic that will help in describing hte replicate filtering scheme in a supplementary figure
+```{r Make a schmatic for the idea of the replicate filtering scheme}
+schematic_dataframe <- data.frame("variant" = c("A120A","F257F","K322K","A79X","C250X","D331X"),
+                                  "class" = c("syn","syn","syn","nonsense","nonsense","nonsense"),
+                                  "score" = c(0.8,0.9,0.5,0.1,0.6,0.2),
+                                  "linked" = c(7,8,3,4,2,5),
+                                  "randomized" = c(2,4,8,5,7,3))
+
+schematic_colorscale <- c("syn" = "red","nonsense" = "blue")
+
+Schematic_1 <- ggplot(data = schematic_dataframe, aes(x = score, fill = class, color = class)) +
+  theme(legend.position = "none", panel.grid.major = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
+  xlab("Abundance score") + ylab("Variant count") +
+  scale_x_continuous(limits = c(0,1), expand = c(0,0), breaks = c(0,0.5,1)) + scale_y_continuous(expand = c(0,0.1)) +
+  scale_fill_manual(values = schematic_colorscale) + scale_color_manual(values = schematic_colorscale) +
+  geom_hline(yintercept = 0) + geom_vline(xintercept = 0) +
+  geom_point(aes(y = 0), size = 4) +
+  geom_density(aes(color = class), alpha = 0.2, adjust = 1.5)
+Schematic_1
+ggsave(file = "Plots/Schematic_1.pdf", Schematic_1, height = 4, width = 6, units = "cm")
+
+Schematic_2 <- ggplot(data = subset(schematic_dataframe, linked >= 4), aes(x = score, fill = class, color = class)) +
+  theme(legend.position = "none", panel.grid.major = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
+  xlab("Abundance score") + ylab("Variant count") +
+  scale_x_continuous(limits = c(0,1), expand = c(0,0), breaks = c(0,0.5,1)) + scale_y_continuous(expand = c(0,0.1)) +
+  scale_fill_manual(values = schematic_colorscale) + scale_color_manual(values = schematic_colorscale) +
+  geom_hline(yintercept = 0) + geom_vline(xintercept = 0) +
+  geom_point(aes(y = 0), size = 4) +
+  geom_density(aes(color = class), alpha = 0.2, adjust = 1.5)
+Schematic_2
+ggsave(file = "Plots/Schematic_2.pdf", Schematic_2, height = 4, width = 6, units = "cm")
+
+Schematic_3 <- ggplot(data = subset(schematic_dataframe, randomized >= 4), aes(x = score, fill = class, color = class)) +
+  theme(legend.position = "none", panel.grid.major = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
+  xlab("Abundance score") + ylab("Variant count") +
+  scale_x_continuous(limits = c(0,1), expand = c(0,0), breaks = c(0,0.5,1)) + scale_y_continuous(expand = c(0,0.1)) +
+  scale_fill_manual(values = schematic_colorscale) + scale_color_manual(values = schematic_colorscale) +
+  geom_hline(yintercept = 0) + geom_vline(xintercept = 0) +
+  geom_point(aes(y = 0), size = 4) +
+  geom_density(aes(color = class), alpha = 0.2, adjust = 1.5)
+Schematic_3
+ggsave(file = "Plots/Schematic_3.pdf", Schematic_3, height = 4, width = 6, units = "cm")
+```
+
+# Lets optimize replicate number cutoff based on controls (synonymous and nonsense)
+```{r Optimizing replicate numbers, warning=F}
+summary_frame<- data.frame("cutoff_inclusive" = seq(1,15))
+resampling_number <-100
+
+for(y in 1:resampling_number){
+  observed_frame <- data.frame("cutoff_inclusive" = seq(1,15))
+  observed_frame$syn_value <- 0
+  observed_frame$called_correctly <- 0
+  
+  shuffled_frame <- data.frame("cutoff_inclusive" = seq(1,15))
+  shuffled_frame$syn_value <- 0
+  shuffled_frame$called_correctly <- 0
+  
+  scorable_syn <- nrow(subset(combined, class == "synonymous" & !is.na(score_total)))
+  scorable_syn_subset <- subset(combined, class == "synonymous" & !is.na(score_total))
+  scorable_syn_subset$shuffled_score_total <- sample(scorable_syn_subset$score_total, replace = F)
+  
+  scorable_nonsense <- nrow(subset(combined, class == "nonsense" & !is.na(score_total) & position < 350 & position > 50))
+  nonsense_with_scores <- subset(combined, class == "nonsense" & !is.na(score_total))
+  nonsense_with_scores$shuffled_upperci <- sample(nonsense_with_scores$upper_ci_total, replace = F)
+  
+  for(x in 1:nrow(observed_frame)){
+    temp_subset <- subset(combined, count_total >= observed_frame$cutoff_inclusive[x] & !is.na(score_total))
+    temp_subset_syn <- subset(scorable_syn_subset, class == "synonymous" & count_total >= observed_frame$cutoff_inclusive[x] & !is.na(score_total))
+    temp_subset_syn_threshold <- quantile(temp_subset_syn$score_total, 0.05)
+    temp_subset_nonsense <- subset(nonsense_with_scores, count_total >= observed_frame$cutoff_inclusive[x] & !is.na(score_total) & position < 350 & position > 50)
+    
+    called_correctly <- sum(temp_subset_nonsense$upper_ci_total < temp_subset_syn_threshold, na.rm = T)
+    called_incorrectly <- sum(temp_subset_nonsense$upper_ci_total >= temp_subset_syn_threshold, na.rm = T)
+    observed_frame$syn_value[x] <- temp_subset_syn_threshold
+    observed_frame$called_correctly[x] <- called_correctly
+    
+    temp_subset_syn_threshold_shuffled <- quantile(temp_subset_syn$shuffled_score_total, 0.05)
+    random_correctly <- sum(temp_subset_nonsense$shuffled_upperci < temp_subset_syn_threshold_shuffled, na.rm = T)
+    random_incorrectly <- sum(temp_subset_nonsense$shuffled_upperci >= temp_subset_syn_threshold_shuffled, na.rm = T)
+    shuffled_frame$syn_value[x] <- temp_subset_syn_threshold_shuffled
+    shuffled_frame$called_correctly[x] <- random_correctly
+  }
+  summary_frame <- cbind(summary_frame, observed_frame$called_correctly - shuffled_frame$called_correctly)
+}
+
+summary_frame$average_correct <- rowMeans(summary_frame[,seq(2,resampling_number+1)])
+summary_frame_melted <- melt(summary_frame[,seq(1,resampling_number+1)], id = "cutoff_inclusive")
+
+replicate_cutoff_nonsense_syn_plot <- ggplot() + 
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank()) +
+  ylab("Nonsense variants scored over random") +
+  geom_jitter(data = summary_frame_melted, aes(x = cutoff_inclusive, y = value), alpha = 0.1, width = 0.2) +
+  geom_boxplot(data = summary_frame_melted, aes(x = cutoff_inclusive, y = value, group = cutoff_inclusive), alpha = 0.2, fill = "red")
+replicate_cutoff_nonsense_syn_plot
+ggsave(file = "Plots/Replicate_cutoff_nonsense_syn_plot.pdf", replicate_cutoff_nonsense_syn_plot, height = 60, width = 80, units = "mm")
+```
+
+
+# Using the optimal replicae filter value obtained from the above graph to actually filter the data
+```{r Using above graph make the right dataset}
+combined$score_abundance <- NA
+for(x in 1:nrow(combined)){
+  if(combined$count_total[x] >= 4){combined$score_abundance[x] <- combined$score_total[x]}
+}
+
+synonymous_lowest_5percent <- quantile(subset(combined, class == "synonymous")$score_abundance, 0.05, na.rm = TRUE)
+synonymous_median <- quantile(subset(combined, class == "synonymous")$score_abundance, 0.5, na.rm = TRUE)
+
+combined_for_plotting_classes <- rbind(
+  combined %>% filter(class == "missense") %>% mutate(plotting_group = "missense"),
+  combined %>% filter(class == "synonymous") %>% mutate(plotting_group = "synonymous"),
+  combined %>% filter(class == "nonsense" & position < 350 & position > 50) %>% mutate(plotting_group = "nonsense"))
+
+combined_for_plotting_classes$plotting_group = factor(combined_for_plotting_classes$plotting_group, levels = c("synonymous","nonsense","missense"))
+
+Synonymous_nonsense_missense_histograms_plot <- ggplot() + 
+  theme_bw() + 
+  theme(panel.grid.major.y = element_blank()) +
+  xlab("Abundance score") + 
+  geom_hline(yintercept = 0) +
+  geom_histogram(data = combined_for_plotting_classes, aes(x = score_abundance), fill = "grey50", alpha = 0.5, color = "black") +
+  facet_grid(rows = vars(plotting_group), scales = "free_y")
+Synonymous_nonsense_missense_histograms_plot
+ggsave(file = "Plots/Synonymous_nonsense_missense_histograms_plot.pdf", Synonymous_nonsense_missense_histograms_plot, height = 80, width = 80, units = "mm")
+```
+
+
+# To validate that the updated dataset is higher in quality, assess how the coefficient of variation changed for variants observed in both datasets
+```{r Compare CV for variants we had seen before}
+combined_for_plotting_classes_4plus <- combined_for_plotting_classes %>% filter(count_total >= 4 & count_orig >= 4 & score_orig >= -0.2 & score_total >= -0.2)
+
+combined_for_plotting_classes_4plus$cv_orig <- combined_for_plotting_classes_4plus$sd_orig / combined_for_plotting_classes_4plus$score_orig
+combined_for_plotting_classes_4plus$cv_total <- combined_for_plotting_classes_4plus$sd_total / combined_for_plotting_classes_4plus$score_total
+
+combined_for_plotting_classes_4plus[combined_for_plotting_classes_4plus$cv_orig < - 0.1,"cv_orig"] <- -0.2
+combined_for_plotting_classes_4plus[combined_for_plotting_classes_4plus$cv_total < - 0.1,"cv_total"] <- -0.2
+
+combined_for_plotting_classes_4plus[combined_for_plotting_classes_4plus$cv_orig > 1.5,"cv_orig"] <- 1.7
+combined_for_plotting_classes_4plus[combined_for_plotting_classes_4plus$cv_total > 1.5,"cv_total"] <- 1.7
+
+paste("fraction of original missense variants with CV < 0.5:",round(nrow(subset(combined_for_plotting_classes_4plus, cv_orig > 0 & cv_orig < 0.5)) / nrow(combined_for_plotting_classes_4plus),2))
+paste("fraction of total missense variants with CV < 0.5:",round(nrow(subset(combined_for_plotting_classes_4plus, cv_total > 0 & cv_total < 0.5)) / nrow(combined_for_plotting_classes_4plus),2))
+
+paste("fraction of original missense variants with CV > 1.5:",round(nrow(subset(combined_for_plotting_classes_4plus, cv_orig > 0 & cv_orig > 1.5)) / nrow(combined_for_plotting_classes_4plus),2))
+paste("fraction of total missense variants with CV > 1.5:",round(nrow(subset(combined_for_plotting_classes_4plus, cv_total > 0 & cv_total > 1.5)) / nrow(combined_for_plotting_classes_4plus),2))
+
+Coefficient_of_variation_plot <- 
+ggplot() + theme_bw() + 
+  scale_x_continuous(limits = c(-0.25,1.8)) +
+  geom_histogram(data = combined_for_plotting_classes_4plus, aes(x = cv_orig), fill = "blue", alpha = 0.5, color = "blue", binwidth = 0.05) +
+  geom_histogram(data = combined_for_plotting_classes_4plus, aes(x = cv_total), fill = "red", alpha = 0.5, color = "red", binwidth = 0.05) +
+  geom_vline(xintercept = 0.5, linetype = 2, alpha = 0.4) + geom_vline(xintercept = 0, linetype = 2, alpha = 0.4) +
+  ylab("Number of variants") + xlab("Coefficient of variation")
+Coefficient_of_variation_plot
+ggsave(file = "Plots/Coefficient_of_variation_plot.pdf", Coefficient_of_variation_plot, height = 40, width = 80, units = "mm")
+```
+
+## Ascribe abundance classes based on the full dataset
+```{r Ascribe abundance classes to the full dataset}
+synonymous_lowest_5percent <- quantile(subset(combined, class == "synonymous")$score_abundance, 0.05, na.rm = TRUE)
+synonymous_median <- quantile(subset(combined, class == "synonymous")$score_abundance, 0.5, na.rm = TRUE)
+
+combined$abundance_class <- NA
+for (x in 1:nrow(combined)){
+  if(is.na(combined$score_abundance[x]) | is.na(combined$upper_ci_total[x]) | is.na(combined$lower_ci_total[x])){combined$abundance_class[x] <- "unknown"} else{
+    if(combined$score_abundance[x] < synonymous_lowest_5percent){combined$abundance_class[x] <- "possibly_low"}
+    if(combined$upper_ci_total[x] < synonymous_lowest_5percent){combined$abundance_class[x] <- "low"}
+    if(combined$score_abundance[x] > synonymous_lowest_5percent){combined$abundance_class[x] <- "possibly_wt-like"}
+    if(combined$lower_ci_total[x] > synonymous_lowest_5percent){combined$abundance_class[x] <- "wt-like"}
+  }
+}
+
+## Export the initial data
+PTEN_abundance_table <- subset(combined, abundance_class %in% c("low","possibly_low","wt-like","possibly_wt-like"))[,c("variant","position","start","end","abundance_class")]
+PTEN_abundance_table$position <- as.numeric(PTEN_abundance_table$position)
+PTEN_abundance_table <- PTEN_abundance_table[order(PTEN_abundance_table$position),]
+
+write.csv(file = "output_datatables/PTEN_abundance_table.csv", row.names = F, PTEN_abundance_table, quote = F)
+```
+
+
+# A summary of key stats from the composite abundance dataset
+```{r Combined data}
+paste("Number of variants that were not scored before but now have scores",nrow(combined %>% filter(is.na(score_orig) & !is.na(score_abundance))))
+paste("Number of variants that were originally scored but given new data with the fill-in experiments:",nrow(combined %>% filter(!is.na(score_orig)) %>% filter((is.na(score9) & is.na(score10) & is.na(score11) & is.na(score12) & is.na(score13) & is.na(score14) & is.na(score15))) %>% filter(count_total >= 4)))
+paste("Number of total PTEN variants currently scored:",round(nrow(subset(combined, !is.na(score_abundance))),2))
+paste("Number of missense PTEN variants currently scored:",round(nrow(subset(combined, !is.na(score_abundance) & class == "missense")),2))
+paste("Number of nonsense PTEN variants currently scored:",round(nrow(subset(combined, !is.na(score_abundance) & class == "nonsense")),2))
+paste("Number of synonymous PTEN variants currently scored:",round(nrow(subset(combined, !is.na(score_abundance) & class == "synonymous")),2))
+
+paste("Number of low abundance PTEN variants intepreted in total:",round(nrow(subset(combined, abundance_class %in% c("low"))),2))
+paste("Number of WT-like abundance PTEN variants intepreted in total:",round(nrow(subset(combined, abundance_class %in% c("wt-like"))),2))
+
+paste("The number of additional low abundance variants identified in the combined dataset:",nrow(subset(combined, abundance_class %in% c("low"))) - nrow(subset(combined, abundance_class_orig %in% c("low"))))
+
+paste("The number of additional WT-like abundance variants identified in the combined dataset:",nrow(subset(combined, abundance_class %in% c("wt-like"))) - nrow(subset(combined, abundance_class_orig %in% c("wt-like"))))
+interpreted_subset <- subset(combined, abundance_class %in% c("low","wt-like"))
+paste("Fraction of scored variants in the combined study considered low or WT-like:",round(nrow(subset(combined, abundance_class %in% c("low","wt-like"))) / nrow(subset(combined, abundance_class %in% c("low","wt-like","possibly_low","possibly_wt-like"))),2))
+paste("Fraction of scored variants in the original study considered low or WT-like:",round(nrow(subset(combined, abundance_class_orig %in% c("low","wt-like")))/nrow(subset(combined, abundance_class_orig %in% c("low","wt-like","possibly_low","possibly_wt-like"))),2))
+```
+
+## Mighell et al recently imputed some of the missing scores in the initial abundance dataset. See how their imputated values correlated with the actual values we got once we performed the fill-in experiment.
+```{r Compare Mighell 2020 imputed data}
+mighell <- read.csv(file = "input_datatables/Mighell_imputed_abundance.csv")
+colnames(mighell)[1] <- "variant"
+
+combined_only_second_library <- combined %>% filter(is.na(score_orig) & !is.na(score_abundance))
+combined_only_second_library2 <- merge(combined_only_second_library, mighell[,c("variant","abundance_score")], by = "variant")
+
+paste("The Pearson's r for the scored and imputed data is:", round(cor(combined_only_second_library2$score_abundance, combined_only_second_library2$abundance_score, method = "pearson"),2))
+
+real_vs_imputed_plot <- ggplot() + 
+  theme_bw() + 
+  labs(x = "Abundance score from fillin library", y = "Imputed score by Mighell 2020") +
+  scale_x_continuous(limits = c(0,1.2)) + scale_y_continuous(limits = c(0,1.2)) +
+  geom_point(data = combined_only_second_library2, aes(x = score_abundance, y = abundance_score), alpha = 0.4)
+real_vs_imputed_plot
+ggsave(file = "plots/Abundance_real_vs_imputed_plot.pdf", height = 4, width = 4)
+```
+
+
+# Updating the ClinVar assessments with the composite abundance dataset
+#### Bringing in a more recent PTEN ClinVar dataset
+```{r Incorporating new ClinVar data}
+
+## Add annotations for Clinvar
+clinvar <- read.table(file = "input_datatables/191016_PTEN_clinvar_missense_nonsense.tsv", header = TRUE, sep = "\t")
+clinvar$Name <- as.character(clinvar$Name)
+clinvar$position <- substr(clinvar$Name, nchar((clinvar$Name)) - 12, nchar((clinvar$Name)))
+clinvar <- clinvar[grepl("\\(p.", clinvar$position),]
+for (x in 1:nrow(clinvar)){clinvar$position[x] <- unlist(strsplit(clinvar$position[x],"\\(p."))[2]}
+clinvar <- subset(clinvar, position != "")
+clinvar <- subset(clinvar, nchar(position) < 20)
+clinvar$start <- "NA"
+clinvar$end <- "NA"
+for (x in 1:nrow(clinvar)){
+  clinvar$start[x] <- substr(clinvar$position[x], 1, 3)
+  clinvar$end[x] <- substr(clinvar$position[x], nchar(toString(clinvar$position[x]))-4, nchar(toString(clinvar$position[x])))}
+clinvar$start <- gsub("[^A-Za-z]", "", clinvar$start)
+clinvar$end <- gsub("[^A-Za-z]", "", clinvar$end)
+clinvar$position <- gsub("[^0-9]", "", clinvar$position)
+for (x in 1:nrow(clinvar)){
+  clinvar$start[x] <- to_single_notation(clinvar$start[x])
+  clinvar$end[x] <- to_single_notation(clinvar$end[x])
+}
+clinvar$variant <- paste(clinvar$start, clinvar$position, clinvar$end, sep ="")
+clinvar2 <- clinvar[c("variant","Condition.s.","Clinical.significance..Last.reviewed.")]
+colnames(clinvar2) <- c("variant","clinvar_disease","clinvar_interpretation")
+
+clinvar2$clinvar_pathog <- 0
+clinvar2$clinvar_likely_pathog <- 0
+clinvar2$clinvar_uncertain <- 0
+clinvar2$clinvar_likely_benign <- 0
+clinvar2$clinvar_benign <- 0
+
+for(x in 1:nrow(clinvar2)){
+  if(grepl("Pathogenic",clinvar2$clinvar_interpretation[x]) == TRUE){
+    clinvar2$clinvar_pathog[x] <- 1}
+  if(grepl("Likely pathogenic",clinvar2$clinvar_interpretation[x]) == TRUE){
+    clinvar2$clinvar_likely_pathog[x] <- 1}
+  if(grepl("Uncertain",clinvar2$clinvar_interpretation[x]) == TRUE){
+    clinvar2$clinvar_uncertain[x] <- 1}
+  if(grepl("Conflicting",clinvar2$clinvar_interpretation[x]) == TRUE){
+    clinvar2$clinvar_uncertain[x] <- 1}
+  if(grepl("Likely benign",clinvar2$clinvar_interpretation[x]) == TRUE){
+    clinvar2$clinvar_likely_benign[x] <- 1}
+  if(grepl("Benign",clinvar2$clinvar_interpretation[x]) == TRUE){
+    clinvar2$clinvar_benign[x] <- 1}
+}
+
+## Manually fixing PTEN LP/P CLinVar conflicts / double-counts
+pten_lp_p_conflicts <- clinvar2[grep("Pathogenic/Likely pathogenic",clinvar2$clinvar_interpretation),]
+clinvar2[clinvar2$variant == "H61R","clinvar_likely_pathog"] <- 0 ## The 2017 Pathogenic Assertion by Herman Laboratory,Nationwide Children's Hospital is much better supported
+clinvar2[clinvar2$variant == "Y68H","clinvar_likely_pathog"] <- 0 ## The 2017 Pathogenic Assertion by GeneDx gives good supporting evidence of pathogenicity assertion
+clinvar2[clinvar2$variant == "L108P","clinvar_likely_pathog"] <- 0 ## The 2014 Pathogenic Assertion by GeneDx gives good supporting evidence of pathogenicity assertion
+clinvar2[clinvar2$variant == "G127R","clinvar_likely_pathog"] <- 0 ## The Assertion provided by GeneDx gives good supporting evidence of pathogenicity
+clinvar2[clinvar2$variant == "R130L","clinvar_likely_pathog"] <- 0 ## The germline assertions for R130L is Pathogenic, whereas somatic assertions are likely pathogenic (and I'm only considering germline for downstream analyses)
+clinvar2[clinvar2$variant == "R130Q","clinvar_likely_pathog"] <- 0 ## The germline assertions for R130Q is Pathogenic, whereas somatic assertions are likely pathogenic (and I'm only considering germline for downstream analyses)
+clinvar2[clinvar2$variant == "G132V","clinvar_likely_pathog"] <- 0 ## The assertions made by GeneDx and OMIM for pathogenic are much better supported
+clinvar2[clinvar2$variant == "R173C","clinvar_likely_pathog"] <- 0 ## The assertions for pathogenic made by the clinical lab and GeneDx are well supproted
+clinvar2[clinvar2$variant == "R173H","clinvar_likely_pathog"] <- 0 ## The germline assertions for R173H are pathogenic, so no conflict at germline level.
+
+#### This subsection finds duplicate annotations, and removes an uninformative one
+clinvar2_duplicates <- subset(data.frame(table(clinvar2$variant)), Freq > 1)
+duplicate_clinvar_rows <- c()
+for(x in 1:nrow(clinvar2_duplicates)){
+  duplicate_clinvar_rows <- append(duplicate_clinvar_rows,which(clinvar2_duplicates$Var1[x] == clinvar2$variant)[1])
+}
+clinvar2_single <- clinvar2[!(seq(1:nrow(clinvar2)) %in% duplicate_clinvar_rows),]
+combined_clinvar <- merge(combined, clinvar2_single[,c("variant","clinvar_pathog","clinvar_likely_pathog","clinvar_uncertain","clinvar_likely_benign")], by = "variant", all.x = TRUE)
+
+combined_clinvar[is.na(combined_clinvar$clinvar_pathog),"clinvar_pathog"] <- 0
+combined_clinvar[is.na(combined_clinvar$clinvar_likely_pathog),"clinvar_likely_pathog"] <- 0
+combined_clinvar[is.na(combined_clinvar$clinvar_uncertain),"clinvar_uncertain"] <- 0
+combined_clinvar[is.na(combined_clinvar$clinvar_likely_benign),"clinvar_likely_benign"] <- 0
+```
+
+## Bringing in and setting up new GnomAD data
+```{r Determining if any given PTEN variant is observed too frequently in gnomAD to be causative for Cowden Syndrome, warning = FALSE, fig.height = 2, fig.width = 4}
+pten_gnomad <- read.csv(file = "input_datatables/PTEN_gnomAD_v3_ENSG00000171862_2019_11_11_13_05_32.csv", header = T, stringsAsFactors = F)
+pten_gnomad <- subset(pten_gnomad, !(Annotation %in% c("splice_donor_variant","splice_donor")))
+
+pten_gnomad$variant <- substr(pten_gnomad$Consequence,3,15)
+pten_gnomad$position <- gsub("[A-Za-z]","",pten_gnomad$variant)
+for(x in 1:nrow(pten_gnomad)){
+  pten_gnomad$start[x] <- to_single_notation(substr(gsub("[0-9]","",pten_gnomad$variant[x]),1,3))
+  pten_gnomad$end[x] <- to_single_notation(substr(gsub("[0-9]","",pten_gnomad$variant[x]),4,6))
+  pten_gnomad$variant[x] <- paste(pten_gnomad$start[x],pten_gnomad$position[x],pten_gnomad$end[x],sep="")
+}
+
+colnames(pten_gnomad)[colnames(pten_gnomad) == "Allele.Count"] <- "gnomad_allele_count"
+colnames(pten_gnomad)[colnames(pten_gnomad) == "Allele.Number"] <- "gnomad_allele_number"
+pten_gnomad_variant <- pten_gnomad %>% group_by(variant) %>% summarize(gnomad_allele_count = sum(gnomad_allele_count), gnomad_allele_number = max(gnomad_allele_number))
+combined_clinvar_gnomad <- merge(combined_clinvar, pten_gnomad_variant[,c("variant","gnomad_allele_count","gnomad_allele_number")], all.x = T)
+
+combined_clinvar_gnomad$above_gnomad_allele_count_threshold_for_cowdens <- NA
+
+collective_pten_cowdens_allele_frequency <- 1/400000
+
+for(x in 1:nrow(combined_clinvar_gnomad)){
+  if(!is.na(combined_clinvar_gnomad$gnomad_allele_count[x])){
+    if(combined_clinvar_gnomad$gnomad_allele_count[x] > qbinom(0.99, size = combined_clinvar_gnomad$gnomad_allele_number[x], collective_pten_cowdens_allele_frequency / 0.95)){
+      combined_clinvar_gnomad$above_gnomad_allele_count_threshold_for_cowdens[x] <- "above threshold"
+    if(combined_clinvar_gnomad$gnomad_allele_count[x] <= qbinom(0.99, size = combined_clinvar_gnomad$gnomad_allele_number[x], collective_pten_cowdens_allele_frequency / 0.95)){
+      combined_clinvar_gnomad$above_gnomad_allele_count_threshold_for_cowdens[x] <- "below threshold"
+    }
+    }
+  }
+}
+```
+
+## This is where the new biological analyses with the ClinVar and GnomAD data begins
+```{r Abundance score histogram}
+custom_colorscale <- c("low" = "#3366ff","possibly_low" = "#b3d9ff","possibly_wt-like" = "#ffcccc","wt-like" = "#F8766D","dominant_negative" = "yellow","high" = "brown","unknown" = "grey75")
+
+combined_for_plotting_clinvar <- rbind(
+  combined_clinvar_gnomad %>% filter(snv == 1) %>% mutate(clinvar = "All SNV"),
+  combined_clinvar_gnomad %>% filter(clinvar_pathog == 1) %>% mutate(clinvar = "Pathog"),
+  combined_clinvar_gnomad %>% filter(clinvar_likely_pathog == 1) %>% mutate(clinvar = "Likely pathog"),
+  combined_clinvar_gnomad %>% filter(clinvar_uncertain == 1) %>% mutate(clinvar = "Uncertain"),
+  combined_clinvar_gnomad %>% filter(above_gnomad_allele_count_threshold_for_cowdens == "above threshold") %>% mutate(clinvar = "GnomAD inferred benign")
+  )
+
+all_snv_table <- data.frame(table((subset(combined_clinvar_gnomad, snv == 1))$abundance_class))
+colnames(all_snv_table) <- c("abundance_class","count")
+all_snv_table$count_interpreted <- all_snv_table$count
+all_snv_table[all_snv_table$abundance_class == "unknown","count_interpreted"] <- 0
+all_snv_table[all_snv_table$abundance_class == "low","count_interpreted"] / sum(all_snv_table$count_interpreted)
+
+pathogenic_table <- data.frame(table((subset(combined_clinvar_gnomad, clinvar_pathog == 1))$abundance_class))
+colnames(pathogenic_table) <- c("abundance_class","count")
+pathogenic_table$count_interpreted <- pathogenic_table$count
+pathogenic_table[pathogenic_table$abundance_class == "unknown","count_interpreted"] <- 0
+pathogenic_table[pathogenic_table$abundance_class == "low","count_interpreted"] / sum(pathogenic_table$count_interpreted)
+
+likelypathog_table <- data.frame(table((subset(combined_clinvar_gnomad, clinvar_likely_pathog == 1))$abundance_class))
+colnames(likelypathog_table) <- c("abundance_class","count")
+likelypathog_table$count_interpreted <- likelypathog_table$count
+likelypathog_table[likelypathog_table$abundance_class == "unknown","count_interpreted"] <- 0
+likelypathog_table[likelypathog_table$abundance_class == "low","count_interpreted"] / sum(likelypathog_table$count_interpreted)
+
+plp_table <- data.frame(table((subset(combined_clinvar_gnomad, clinvar_likely_pathog == 1 | clinvar_pathog == 1))$abundance_class))
+colnames(plp_table) <- c("abundance_class","count")
+plp_table$count_interpreted <- plp_table$count
+plp_table[plp_table$abundance_class == "unknown","count_interpreted"] <- 0
+plp_table[plp_table$abundance_class == "low","count_interpreted"] / sum(plp_table$count_interpreted)
+
+
+combined_for_plotting_clinvar$clinvar <- factor(combined_for_plotting_clinvar$clinvar, levels = c("All SNV","Pathog","Likely pathog","Uncertain","GnomAD inferred benign"))
+
+Clinvar_plots_supplementary <- ggplot() + 
+  theme_bw() + theme(legend.position = "top") +
+  scale_fill_manual(values = custom_colorscale) + scale_color_manual(values = custom_colorscale) +
+  geom_histogram(data = subset(combined_for_plotting_clinvar, class == "missense"), aes(x = score_abundance, fill = abundance_class), binwidth = 0.1, alpha = 0.5, position="stack", color = "black") + 
+  facet_grid(rows = vars(clinvar), scale = "free_y")
+Clinvar_plots_supplementary
+ggsave(file = "plots/Clinvar_plots_supplementary.pdf", Clinvar_plots_supplementary, height = 140, width = 80, units = "mm")
+```
+
+#### Printing out commands that can be used in Pymol (crystal structure 2d5r)
+```{r Coloring commands for PYMOL based on pathogenic}
+paste("select substrate, resi 1352","show spheres, substrate","color magenta, substrate", sep = ";")
+
+paste("select pathog_stable, not name c+n+o and resi", gsub(", ","+",toString(as.character(subset(combined_clinvar, class == "missense" & clinvar_pathog == 1 & snv == 1 & abundance_class == "wt-like")$position))),"; show spheres, pathog_stable; color red, pathog_stable")
+
+paste("select likely_pathog_stable, not name c+n+o and resi", gsub(", ","+",toString(as.character(subset(combined_clinvar, class == "missense" & clinvar_likely_pathog == 1 & snv == 1 & abundance_class == "wt-like")$position))),"; show spheres, likely_pathog_stable; color salmon, likely_pathog_stable")
+
+## Rotate the pymol view
+paste("rotate x, -90")
+```
+
+## Look for PTEN abundance variants in Blast data
+```{r Blast for PTEN data and abundance}
+blast <- read.delim(file = "input_datatables/PTEN_xml_blast_parsed_output.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+blast_short <- subset(blast, align_length < 420)
+blast_unique <- subset(blast_short, !(sciname %in% c("synthetic construct")))
+blast_unique <- rbind(blast_unique[grep("XP", blast_unique$accession),],blast_unique[grep("NP", blast_unique$accession),])
+blast_unique <- subset(blast_unique, variant_list != "['-85G', '-86Y', '-87L', '-88F', '-89T', '-90T']")
+blast_unique_14 <- subset(blast_unique, variant_number <= 9)
+
+pten_summary <- data.frame("organism" = c(), "variant" = c(), "score_abundance" = c(), "abundance_class" = c())
+
+for(x in 1:nrow(blast_unique_14)){
+  temp_list <- blast_unique_14$variant_list[x]
+  temp_list2 <- unlist(strsplit(gsub("[^A-Z,0-9]","",temp_list),","))
+  temp_organism <-gsub(" ","_",blast_unique_14$sciname[x])
+  if(length(temp_list2)==0){pten_summary <- rbind(pten_summary, data.frame("organism" = temp_organism, "variant" = "WT", "score_abundance" = 1, "abundance_class" = "wt-like"))} else{
+    for(y in 1:length(temp_list2 == 0)){
+      temp_variant <- temp_list2[y]
+      temp_value <- combined_clinvar[combined_clinvar$variant == temp_variant, "score_abundance"]
+      temp_abund_class <- combined_clinvar[combined_clinvar$variant == temp_variant, "abundance_class"]
+      if(length(temp_value)==0){temp_value <- NA}
+      if(length(temp_abund_class)==0){temp_abund_class <- NA}
+      pten_summary <- rbind(pten_summary, data.frame("organism" = temp_organism, "variant" = temp_variant, "score_abundance" = temp_value,"abundance_class" = temp_abund_class))
+    }
+  }
+}
+pten_summary <- subset(pten_summary, organism != "Neophocaena_asiaeorientalis_asiaeorientalis")
+
+pten_tree <- read.newick(file = "input_datatables/PTEN_species_names.nwk")  #You need phytools for this
+pten_tree_plot <- ggtree(pten_tree) + geom_tiplab(angle = 90) + coord_flip()
+pten_tree_plot
+ggsave(file = "plots/pten_tree_plot.pdf", pten_tree_plot, height = 60*1.5, width = 178*1.5, units = "mm")
+
+d = fortify(pten_tree)
+d = subset(d, isTip)
+label_order <- with(d, label[order(y, decreasing=F)])
+
+pten_synonymous_5th <- quantile(subset(combined_clinvar, class == "synonymous")$score_abundance, 0.05, na.rm = T)
+custom_colorscale <- c("low" = "#3366ff","possibly_low" = "#b3d9ff","possibly_wt-like" = "#ffcccc","wt-like" = "#F8766D","unknown" = "grey75")
+
+pten_summary$organism <- as.character(pten_summary$organism)
+for(x in 1:nrow(pten_summary)){
+  pten_summary$organism[x] <- paste(unlist(strsplit(pten_summary$organism[x], split = "_"))[1],unlist(strsplit(pten_summary$organism[x], split = "_"))[2],sep = "_")
+}
+
+pten_summary[pten_summary$organism == "Neomonachus_schauinslandi","organism"] <- "Monachus_monachus"
+label_order[!(label_order %in% pten_summary$organism)]
+pten_summary$organism[!(pten_summary$organism %in% label_order)]
+pten_summary$organism <- factor(pten_summary$organism, levels = c(label_order))
+
+scientific_names <- read.csv(file = "input_datatables/Scientific_names.csv", header = TRUE, stringsAsFactors = FALSE)
+scientific_names$organism <- gsub(" ", "_", scientific_names$sciname)
+
+pten_summary2 <- merge(pten_summary, scientific_names[,c("organism","common")], by = "organism", all.x = TRUE)
+pten_summary2 <- pten_summary2[order(pten_summary2$organism),]
+
+common_order <- c()
+for(x in 1:nrow(pten_summary2)){
+  if(!is.na(pten_summary2$common[x]) & !(pten_summary2$common[x] %in% common_order)){
+    common_order <- c(common_order, pten_summary2$common[x])
+  }
+}
+
+pten_summary2$common <- factor(pten_summary2$common, levels = common_order)
+
+variant_number <- data.frame(table(pten_summary2$common))
+variant_number <- data.frame("common" = variant_number[,"Var1"])
+
+pten_summary3 <- data.frame(unique((pten_summary2 %>% filter(variant != "WT"))[,c("variant","common","score_abundance","abundance_class")]))
+
+variant_number2 <- data.frame(table(pten_summary3$common))
+colnames(variant_number2) <- c("common","variant_number")
+
+variant_number3 <- merge(variant_number, variant_number2, by = "common", all.x = TRUE)
+variant_number3$common <- factor(variant_number3$common, levels = c(common_order))
+
+pten_summary4 <- data.frame(unique(pten_summary3[,c("variant","score_abundance","abundance_class")]))
+
+pten_abundance_organisms <- ggplot() + 
+  theme_bw() + theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust = 0.5), legend.position = "none", ) +
+  scale_y_continuous(limits = c(0, 1.2)) + xlab(NULL) + ylab("Abundance score") +
+  scale_color_manual(values = custom_colorscale) +
+  geom_point(data = pten_summary2, aes(x = common, y = score_abundance, color = abundance_class)) +
+  geom_text(data = variant_number3, aes(x = common, y = 0, label = variant_number), size = 3, color = "orange", angle = -90, hjust = 1)
+pten_abundance_organisms
+ggsave(file = "plots/pten_abundance_organisms.pdf", pten_abundance_organisms, height = 60*1.5, width = 178*1.5, units = "mm")
+
+paste("We identified",nrow(pten_summary4),"missense changes from the human reference sequence.")
+paste("Of these, we had scores for",nrow(subset(pten_summary4, !is.na(score_abundance))),"variants.")
+paste(round(nrow(subset(pten_summary4, !is.na(score_abundance) & abundance_class == "low"))),"of these variants were low abundance")
+
+homolog_variant_number_histogram <- ggplot() + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust = 0.5), legend.position = "none", panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank()) +
+  xlab(NULL) + ylab("Amino acid differences from Humans") +
+  scale_x_continuous(breaks = seq(0,10,1)) +
+  geom_hline(yintercept = 0) +
+  geom_histogram(data = variant_number3, aes(x = variant_number), binwidth = 1, fill = "grey50", color = "black", alpha = 0.5)
+homolog_variant_number_histogram
+ggsave(file = "plots/homolog_variant_number_histogram.pdf", homolog_variant_number_histogram, height = 40, width = 80, units = "mm")
+
+paste("The median number of differences in related organisms was:",median(variant_number3$variant_number))
+```
+#### Make a single plot for PTEN All SNV, ClinVar, and Homolog
+```{r Single plot for SNV, ClinVar, and Homologs}
+combined_clinvar_homolog <- rbind(
+  (combined_clinvar_gnomad %>% filter(class == "missense") %>% mutate(grouping = "All\nmissense"))[,c("variant","grouping","score_abundance","abundance_class")],
+  (combined_clinvar_gnomad %>% filter(clinvar_pathog == 1 | clinvar_likely_pathog == 1) %>% 
+     mutate(grouping = "P/LP"))[,c("variant","grouping","score_abundance","abundance_class")],
+  (pten_summary4 %>% mutate(grouping = "Homologs"))[,c("variant","grouping","score_abundance","abundance_class")],
+    (combined_clinvar_gnomad %>% filter(above_gnomad_allele_count_threshold_for_cowdens == "above threshold") %>% mutate(grouping = "GnomAD\ninferred\nbenign"))[,c("variant","grouping","score_abundance","abundance_class")],
+  (combined_clinvar_gnomad %>% filter(clinvar_uncertain == 1) %>% mutate(grouping = "Uncertain"))[,c("variant","grouping","score_abundance","abundance_class")]
+)
+
+combined_clinvar_homolog$grouping <- factor(combined_clinvar_homolog$grouping, levels = c("All\nmissense","P/LP","GnomAD\ninferred\nbenign","Homologs","Uncertain"))
+
+custom_colorscale <- c("low" = "#3366ff","possibly_low" = "#b3d9ff","possibly_wt-like" = "#ffcccc","wt-like" = "#F8766D","unknown" = "grey75")
+
+Clinvar_homolog_histograms <- ggplot() + 
+  theme_bw() + theme(legend.position = "top", panel.grid.minor.y = element_blank()) +
+  geom_vline(xintercept = synonymous_lowest_5percent, linetype = 2, alpha = 0.5) + 
+  scale_fill_manual(values = custom_colorscale) + 
+  scale_color_manual(values = custom_colorscale) +
+  geom_histogram(data = combined_clinvar_homolog, aes(x = score_abundance, fill = abundance_class), binwidth = 0.1, alpha = 0.5, position="stack", color = "black") + 
+  facet_grid(rows = vars(grouping), scale = "free_y")
+Clinvar_homolog_histograms
+ggsave(file = "plots/Clinvar_homolog_histograms.pdf", Clinvar_homolog_histograms, height = 125, width = 90, units = "mm")
+
+plp_summary <- data.frame(table((combined_clinvar_homolog %>% filter(grouping == "P/LP"))$abundance_class))
+colnames(plp_summary) <- c("abundance_class","count")
+
+paste("Of the",sum(plp_summary$count),"pathogenic or likely pathogenic variants of PTEN in ClinVar, we were able to give abundance interpretations for",sum(subset(plp_summary, abundance_class != "unknown")$count),"variants.")
+
+plp_summary$interpreted_count <- plp_summary$count
+plp_summary[plp_summary$abundance_class == "unknown","interpreted_count"] <- 0
+
+plp_summary$interpreted_freq <- round(plp_summary$interpreted_count / sum(plp_summary$interpreted_count),2)
+plp_summary
+```
+
+#### Look at clustering of well-represented positions
+```{r Looking at well-characterized positions}
+orig_positional_coverage <- combined %>% filter(!is.na(score_orig) & class == "missense") %>% count(position) %>% count(n)
+composite_positional_coverage <- combined %>% filter(!is.na(score_abundance) & class == "missense") %>% count(position) %>% count(n)
+positional_coverage_frame <- merge(orig_positional_coverage,composite_positional_coverage, by = "n"); colnames(positional_coverage_frame) <- c("coverage","orig","composite")
+positional_coverage_frame_melted <- melt(positional_coverage_frame, "coverage")
+
+ggplot() + scale_x_continuous(limits = c(0.5,19.5), expand = c(0,1), breaks = seq(1,19,2)) +
+  geom_bar(data = positional_coverage_frame_melted, aes(x = coverage, y = value, fill = variable), stat = "identity", position = "dodge", color = "black")
+
+
+pten_missense <- subset(combined, class == "missense" & variant != "wt" & variant != "WT")
+
+pten_seq <- "MTAIIKEIVSRNKRRYQEDGFDLDLTYIYPNIIAMGFPAERLEGVYRNNIDDVVRFLDSKHKNHYKIYNLCAERHYDTAKFNCRVAQYPFEDHNPPQLELIKPFCEDLDQWLSEDDNHVAAIHCKAGKGRTGVMICAYLLHRGKFLKAQEALDFYGEVRTRDKKGVTIPSQRRYVYYYSYLLKNHLDYRPVALLFHKMMFETIPMFSGGTCNPQFVVCQLKVKIYSSNSGPTRREDKFMYFEFPQPLPVCGDIKVEFFHKQNKMLKKDKMFHFWVNTFFIPGPEETSEKVENGSLCDQEIDSICSIERADNDKEYLVLTLTKNDLDKANKDKANRYFSPNFKVKLYFTKTVEEPSNPEASSSTSVTPDVSDNEPDHYRYSDTTDSDPENEPFDEDQHTQITKV"
+
+pten_aa_num <- nchar(pten_seq)
+pten_df <- data.frame("position" = seq(1,pten_aa_num,1),
+                      "A"= rep(NA,pten_aa_num), "C"= rep(NA,pten_aa_num), "D"= rep(NA,pten_aa_num), "E"= rep(NA,pten_aa_num), "F"= rep(NA,pten_aa_num), "G"= rep(NA,pten_aa_num),
+                      "H"= rep(NA,pten_aa_num), "I"= rep(NA,pten_aa_num), "K"= rep(NA,pten_aa_num), "L"= rep(NA,pten_aa_num), "M"= rep(NA,pten_aa_num), "N"= rep(NA,pten_aa_num),
+                      "P"= rep(NA,pten_aa_num), "Q"= rep(NA,pten_aa_num), "R"= rep(NA,pten_aa_num), "S"= rep(NA,pten_aa_num), "T"= rep(NA,pten_aa_num), "V"= rep(NA,pten_aa_num),
+                      "W"= rep(NA,pten_aa_num), "Y"= rep(NA,pten_aa_num))
+
+for(y in 1:nchar(pten_seq)){pten_df[y,substr(pten_seq,y,y)] <- 1}
+for(x in 1:nrow(pten_missense)){
+  pten_df[pten_missense$position[x],pten_missense$end[x]] <- pten_missense$score_abundance[x]}
+
+pten_df <- subset(pten_df, !is.na(position))
+
+abundance_normal_percentile_low <- median((subset(combined_clinvar_gnomad, class == "synonymous"))$score_total, na.rm = T)
+abundance_normal_percentile_high <- quantile((subset(combined_clinvar_gnomad, class == "synonymous"))$score_total, 0.95, na.rm = T) 
+
+abundance_low_percentile <- median((subset(combined_clinvar_gnomad, class == "nonsense"))$score_total, na.rm = T) #quantile(normal_dist_fit_low$prob, 0.90)
+
+pten_double3 <- pten_df[2:nrow(pten_df),]
+
+pten_double3$fraction_below_wt <- 0
+for(x in 1:nrow(pten_double3)){
+  pten_double3$fraction_below_wt[x] <- sum(na.omit(unlist(pten_double3[x,2:ncol(pten_double3)])) < abundance_normal_percentile_low) / length(na.omit(unlist(pten_double3[x,2:ncol(pten_double3)])))
+}
+
+pten_lower_threshold <- as.numeric(abundance_low_percentile)
+pten_upper_threshold <- as.numeric(abundance_normal_percentile_high)
+
+
+## Double hclust
+pten_double <- pten_df[,2:21]
+rownames(pten_double) <- pten_df[,1]
+
+
+## Subsetting only for positions with 18 or more variants
+pten_double$count <- NA
+for(x in 1:nrow(pten_double)){
+  pten_double$count[x] <- sum(!is.na(pten_double[x,]))
+}
+
+pten_double <- subset(pten_double, count >= 18)
+pten_double <- pten_double[,1:20]
+pten_double2 <- pten_double
+
+for(x in 1:nrow(pten_double2)){
+  for(y in 1:ncol(pten_double2)){
+    if(is.na(pten_double2[x,y]) == TRUE){
+      pten_double2[x,y] <- mean(unlist(pten_double2[x,]), na.rm = TRUE)
+    }
+  }
+}
+
+row.order <- hclust(dist(pten_double2))$order
+col.order <- hclust(dist(t(pten_double2)))$order
+
+pten_double_label_order <- rev(rownames(pten_double2[row.order, col.order]))
+pten_double_variable_order <- colnames(pten_double2[row.order, col.order])
+pten_double_variable_order <- c("G","S","T","C","A","M","W","Y","F","L","I","V","D","E","N","Q","H","K","R","P")
+
+pten_double$label <- rownames(pten_double)
+pten_double2_melt <- melt(pten_double, id = "label")
+
+for(x in 1:nrow(pten_double2_melt)){
+  pten_double2_melt$value[x] <- as.numeric(as.character(pten_double2_melt$value[x]))
+  if(pten_double2_melt$value[x] <= pten_lower_threshold & !(is.na(pten_double2_melt$value[x]))){pten_double2_melt$value[x] <- pten_lower_threshold}
+  if(pten_double2_melt$value[x] >= pten_upper_threshold & !(is.na(pten_double2_melt$value[x]))){pten_double2_melt$value[x] <- pten_upper_threshold}
+}
+
+pten_double2_melt <- subset(pten_double2_melt, label != 1)
+pten_double2_melt$label <- factor(pten_double2_melt$label, levels = pten_double_label_order)
+pten_double2_melt$variable <- factor(pten_double2_melt$variable, levels = pten_double_variable_order)
+
+pten_mutational_spectra <- ggplot() + 
+  xlab(NULL) + ylab(NULL) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  scale_fill_gradientn(colours = c("blue","white","red"), values = rescale(c(pten_lower_threshold,1,1.5)), limits=c(pten_lower_threshold,1.5)) +
+  geom_tile(data = pten_double2_melt, aes(x = label, y = variable, fill = value))
+pten_mutational_spectra
+ggsave(file = "plots/pten_abundance_mutational_spectra.pdf", pten_mutational_spectra, height = 80, width = 178*2, units = "mm")
+
+write.csv(file = "output_datatables/pten_abundance_imputed.csv", pten_double2, quote = FALSE, row.names = FALSE)
+```
+
+#### Calculate gini coefficient to separate most mutation intolerant positions
+```{r Gini coefficient}
+gini_frame <- data.frame("position" = as.character(rownames(pten_double2)))
+gini_frame$gini <- 0
+for(x in 1:nrow(gini_frame)){gini_frame$gini[x] <- gini(unlist(pten_double2[x,]))}
+
+paste("Minimum Gini coefficient:", round(min(gini_frame$gini, na.rm = T),2))
+paste("Maximum Gini coefficient:", round(max(gini_frame$gini, na.rm = T),2))
+
+Gini_coefficient_plot <- ggplot() +
+  theme_bw() + 
+  scale_y_continuous(expand = c(0,0.1)) +
+  geom_hline(yintercept = 0, size = 1.5) +
+  geom_histogram(data = subset(gini_frame, gini <= 0.121), aes(x = gini), binwidth = 0.02, color = "black", fill = "blue", alpha = 0.8) +
+  geom_histogram(data = subset(gini_frame, gini > 0.121 & gini <= 0.24), aes(x = gini), binwidth = 0.02, color = "black", fill = "thistle2", alpha =  0.8) +
+  geom_histogram(data = subset(gini_frame, gini > 0.24), aes(x = gini), binwidth = 0.02, color = "black", fill = "red", alpha =  0.8)
+Gini_coefficient_plot
+ggsave(file = "plots/Gini_coefficient_plot.pdf", Gini_coefficient_plot, height = 35, width = 35, units = "mm")
+
+paste("select mut_intolerant_abundance, resi",gsub(", ","+",toString(as.numeric(as.character((mutation_intolerant_positions <- gini_frame %>% filter(gini > 0.25))$position)))))
+paste("select polar_mut_intolerant_abundance, resi 251+173+326+169")
+```
+
+#### Combine Gini coefficient with clustered heatmap
+```{r Combined gini and mutational spectra, fig.width = 10, fig.height = 3}
+gini_frame2 <- gini_frame
+colnames(gini_frame2) <- c("label","value")
+
+gini_frame2[gini_frame2$value <= 0.07191892, "value"] <- 0.072
+gini_frame2[gini_frame2$value >= 0.07191892 & gini_frame2$value <= 0.121, "value"] <- 0.072
+gini_frame2[gini_frame2$value > 0.24, "value"] <- 1.5
+gini_frame2[gini_frame2$value > 0.121 & gini_frame2$value <= 0.24, "value"] <- 0.9
+
+gini_frame2$variable <- "Gini"
+pten_double2_melt_gini <- rbind(pten_double2_melt, gini_frame2)
+
+## Frame for denoting WT resudiues
+pten_residues <- data.frame("position" = seq(1,nchar(pten_seq)), "residue" = NA)
+for(x in 1:nrow(pten_residues)){pten_residues$residue[x] <- substr(pten_seq,x,x)}
+pten_residues2 <- subset(pten_residues, position %in% gini_frame2$label)
+pten_residues2$position <- as.character(pten_residues2$position)
+pten_residues2$position <- factor(pten_residues2$position, levels = pten_double_label_order)
+pten_residues2$residue <- factor(pten_residues2$residue, levels = pten_double_variable_order)
+
+pten_mutational_spectra <- ggplot() +
+  xlab(NULL) + ylab(NULL) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  scale_fill_gradientn(colours = c("blue","white","red"), values = rescale(c(pten_lower_threshold,1,1.5)), limits=c(pten_lower_threshold-0.1,1.5)) +
+  geom_tile(data = pten_double2_melt_gini, aes(x = label, y = variable, fill = value)) +
+  geom_point(data = pten_residues2, aes(x = position, y = residue)) + 
+  geom_hline(yintercept = 20.5)
+pten_mutational_spectra
+ggsave(file = "plots/pten_abundance_mutational_spectra.pdf", pten_mutational_spectra, height = 65, width = 175*1.2, units = "mm")
+```
+
+## Comparisons of PTEN abundance and activity
+  
+#### Now let's add in PTEN functional data
+```{r Start adding functional data}
+# Import the supplementary data from the Mighell et al AJHG paper
+pten_func <- read.delim(file = "input_datatables/Mighell_PTEN_phosphatase_data.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+pten_func <- pten_func[,c("Variant..one.letter.","Cum_score","Cum_SE","High_conf")]
+colnames(pten_func) <- c("variant","func","func_se","high_conf")
+pten_func$position <- gsub("[^0-9]","",pten_func$variant)
+pten_func$variant <- gsub("\\*","X",pten_func$variant)
+for(x in 1:nrow(pten_func)){
+  pten_func$start[x] <- substr(gsub("[^A-Z]","",pten_func$variant[x]),1,1)
+  pten_func$end[x] <- substr(gsub("[^A-Z]","",pten_func$variant[x]),2,2)
+}
+pten_func <- subset(pten_func, end != "" & position != 1)
+pten_func$func4 <- -(pten_func$func / quantile((pten_func$func), 0.05, na.rm = TRUE)) + 1
+pten_func$func5 <- ((pten_func$func4) - quantile((pten_func$func4), 0.05, na.rm = TRUE)) / (1 - quantile((pten_func$func4), 0.05, na.rm = TRUE))
+pten_func$score_activity <- pten_func$func5
+
+combined_abund_act <- merge(combined_clinvar, pten_func[,c("variant","score_activity","high_conf")], by = "variant", all.x = T)[c("variant","position","snv","class","score_abundance","abundance_class","score_activity","high_conf","clinvar_pathog","clinvar_likely_pathog","clinvar_uncertain")]
+
+## Set some boundaries
+abundance_syn_5th <- quantile(subset(combined_abund_act, class == "synonymous")$score_abundance,0.05,na.rm = T)
+abundance_nonsense_5th <- quantile(subset(combined_abund_act, position > 50 & position < 350 & class == "nonsense")$score_abundance,0.95, na.rm = T)
+
+pten_func_syn <- -1.11
+pten_func_syn3 <- -(pten_func_syn / quantile((pten_func$func), 0.05, na.rm = TRUE)) + 1
+pten_func_syn4 <- ((pten_func_syn3) - quantile((pten_func$func4), 0.05, na.rm = TRUE)) / (1 - quantile((pten_func$func4), 0.05, na.rm = TRUE))
+activity_syn_5th <- pten_func_syn4
+
+pten_func_nonsense <- -2.13
+pten_func_nonsense3 <- -(pten_func_nonsense / quantile((pten_func$func), 0.05, na.rm = TRUE)) + 1
+pten_func_nonsense4 <- ((pten_func_nonsense3) - quantile((pten_func$func4), 0.05, na.rm = TRUE)) / (1 - quantile((pten_func$func4), 0.05, na.rm = TRUE))
+activity_nonsense_5th <- pten_func_nonsense4
+
+count_abundance_scores <- nrow(subset(combined_abund_act, !is.na(score_abundance) & class == "missense"))
+paste("Number of variants with abundance scores:", count_abundance_scores)
+
+count_activity_scores <- nrow(subset(combined_abund_act, !is.na(score_activity) & class == "missense" & high_conf == T))
+paste("Number of variants with activity scores:", count_activity_scores)
 ```
