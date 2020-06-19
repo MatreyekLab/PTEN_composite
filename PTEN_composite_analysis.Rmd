@@ -1,0 +1,123 @@
+---
+title: "PTEN composite analysis"
+author: "Kenneth Matreyek"
+date: "6/19/2020"
+output: github_document
+---
+
+```{r setting up the analysis document}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+
+set.seed(1234)
+if(!require(reshape2)){install.packages("reshape2")}
+library(reshape2)
+if(!require(ggrepel)){install.packages("ggrepel")}
+library(ggrepel)
+if(!require(uwot)){install.packages("uwot")}
+library(uwot)
+if(!require(scales)){install.packages("scales")}
+library(scales)
+if(!require(MASS)){install.packages("MASS")}
+library(MASS)
+if(!requireNamespace("BiocManager", quietly = TRUE)){install.packages("BiocManager")}
+if(!require(ggtree)){install.packages(BiocManager::install("ggtree"))}
+library(ggtree)
+if(!require(reldist)){install.packages("reldist")}
+library(reldist)
+if(!require(tidyverse)){install.packages("tidyverse")}
+library(tidyverse)
+if(!require(phytools)){install.packages("phytools")}
+library(phytools)
+
+
+theme_new <- theme_set(theme_bw())
+theme_new <- theme_update(panel.background = element_blank(),
+                          panel.border = element_blank(),
+                          panel.grid.major = element_line(colour = "grey95"),
+                          panel.grid.minor = element_blank())
+
+to_single_notation <- function(arg1){
+  if(toupper(arg1) == "ALA"){return("A")}
+  if(toupper(arg1) == "CYS"){return("C")}
+  if(toupper(arg1) == "ASP"){return("D")}
+  if(toupper(arg1) == "GLU"){return("E")}
+  if(toupper(arg1) == "PHE"){return("F")}
+  if(toupper(arg1) == "GLY"){return("G")}
+  if(toupper(arg1) == "HIS"){return("H")}
+  if(toupper(arg1) == "ILE"){return("I")}
+  if(toupper(arg1) == "LYS"){return("K")}
+  if(toupper(arg1) == "LEU"){return("L")}
+  if(toupper(arg1) == "MET"){return("M")}
+  if(toupper(arg1) == "ASN"){return("N")}
+  if(toupper(arg1) == "PRO"){return("P")}
+  if(toupper(arg1) == "GLN"){return("Q")}
+  if(toupper(arg1) == "ARG"){return("R")}
+  if(toupper(arg1) == "SER"){return("S")}
+  if(toupper(arg1) == "THR"){return("T")}
+  if(toupper(arg1) == "VAL"){return("V")}
+  if(toupper(arg1) == "TRP"){return("W")}
+  if(toupper(arg1) == "TYR"){return("Y")}
+  if(toupper(arg1) == "TER"){return("X")}
+}
+```
+
+## Import all relevant datasets
+```{r Make composite abundance score using all replicates}
+## Import the original dataset with relevant columns
+original <- read.delim(file = "input_datatables/PTEN_abundance_original.tsv", header = TRUE, stringsAsFactors = FALSE)
+colnames(original)[colnames(original) %in% c("abundance_class","score","sd","expts","se","lower_ci","upper_ci")] <- c("abundance_class_orig","score_orig","sd_orig","count_orig","se_orig","lower_ci_orig","upper_ci_orig")
+
+# Rename the score for the original dataset
+colnames(original)[colnames(original) == "score"] <- "score_orig"
+
+## Import the fill-in dataset
+replicates <- read.csv(file = "output_datatables/PTEN_fillin_vampseq_combined.csv", header =  TRUE, stringsAsFactors = FALSE)
+colnames(replicates)[colnames(replicates) %in% c("e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3","average","count","sd","se","lower_ci","upper_ci","abundance_class")] <- c("score9","score10","score11","score12","score13","score14","score15","score_fillin","count_fillin","sd_fillin","se_fillin","lower_ci_fillin","upper_ci_fillin","abundance_class_fillin")
+
+combined <- merge(
+  replicates[,c("variant","score9","score10","score11","score12","score13","score14","score15","score_fillin","count_fillin","sd_fillin","se_fillin","lower_ci_fillin","upper_ci_fillin","abundance_class_fillin")], 
+  original[,c("variant","position","start","end","class","snv","score_orig","abundance_class_orig","sd_orig","count_orig","se_orig","lower_ci_orig","upper_ci_orig","score1","score2","score3","score4","score5","score6","score7","score8")],
+  by = "variant", all = T)
+
+combined <- combined[,c("variant","position","start","end","class","snv","score_orig","abundance_class_orig","score_fillin","score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15","sd_orig","count_orig","se_orig","lower_ci_orig","upper_ci_orig","sd_fillin","count_fillin","se_fillin","lower_ci_fillin","upper_ci_fillin")]
+```
+
+## First paragraph of results
+```{r Original dataset stats}
+total_possible <- (402*21) # Includes all missense, nonsense, and synonymous
+paste("PTEN variants scored in the first paper:",nrow(subset(combined, !is.na(score_orig)))-2) 
+paste("PTEN missense variants scored in the first paper:",nrow(subset(combined, class == "missense" & !is.na(score_orig)))-2) 
+paste("Fraction of possible variants scored in the first paper:",round((nrow(subset(combined, !is.na(score_orig)))-2)/total_possible,2))
+paste("Number of positions where 18 or more missense variants were scored in the first paper:", sum(data.frame(table((combined %>% filter(class == "missense", !is.na(score_orig) & variant != "M1V"))$position))$Freq >= 18))
+
+paste("There were",nrow(subset(replicates, class == "missense")),"unique PTEN missense variants associated with a barcode in the secondary library.")
+```
+
+## Compare the well-scored variants for the first and second datasets
+```{r Compare between the two datasets}
+combined_5plus <- combined %>% filter(count_orig >= 5 & count_fillin >= 5)
+
+paste("There were",nrow(combined_5plus),"variants that were observed in both experiments in 5 or more replicates, and the there was a Pearson's correlation coefficient (r) of",round(cor(combined_5plus$score_orig, combined_5plus$score_fillin),2),"for the scores of the variants from the two different libraries.")
+
+lm_orig_fillin <- lm(combined_5plus$score_fillin ~ combined_5plus$score_orig)
+paste("For a linear model fit to the overlapping data, the slope was",round(lm_orig_fillin$coefficients[2],2),"and the intercept was",round(lm_orig_fillin$coefficients[1],2))
+
+Experiment_score_correlation_plot.pdf <- ggplot() + 
+  theme_bw() + 
+  theme(panel.grid.major = element_blank()) +
+  scale_x_continuous(breaks = seq(0,1.2,0.2)) + 
+  scale_y_continuous(breaks = seq(0,1.2,0.2)) +
+  xlab("Score from original experiment") +
+  ylab("Score from second experiment") +
+  geom_abline(slope = 1, intercept = 0, alpha = 0.2, size = 10) +
+  geom_abline(slope = lm_orig_fillin$coefficients[2], intercept = lm_orig_fillin$coefficients[1], alpha = 0.2, size = 10, color = "blue") +
+  geom_point(data = combined_5plus, aes(x = score_orig, y = score_fillin), alpha = 0.5)
+Experiment_score_correlation_plot.pdf
+
+ggsave(file = "plots/Experiment_score_correlation_plot.pdf", Experiment_score_correlation_plot.pdf, height = 80, width = 80, units = "mm")
+
+paste("Pearson's r:",round(cor(combined_5plus$score_orig, combined_5plus$score_fillin, method = "pearson"),2))
+paste("Percent of variance explained:",round(cor(combined_5plus$score_orig, combined_5plus$score_fillin, method = "pearson")^2,2))
+paste("Percent of variance unexplained:",round(1-cor(combined_5plus$score_orig, combined_5plus$score_fillin)^2,2))
+```
