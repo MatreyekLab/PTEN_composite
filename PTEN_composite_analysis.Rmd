@@ -860,3 +860,412 @@ paste("Number of variants with abundance scores:", count_abundance_scores)
 count_activity_scores <- nrow(subset(combined_abund_act, !is.na(score_activity) & class == "missense" & high_conf == T))
 paste("Number of variants with activity scores:", count_activity_scores)
 ```
+
+#### Making a comparison of abundance and functional data
+```{r Abundance vs functional}
+complete_abund_act <- subset(combined_abund_act, !is.na(score_abundance) & !(is.na(score_activity)))
+complete_abund_act$abund_act_class <- "NA"
+
+for(x in 1:nrow(complete_abund_act)){
+  if(!(is.na(complete_abund_act$score_activity[x])) & !(is.na(complete_abund_act$score_abundance[x]))){
+    if((complete_abund_act$abundance_class[x] == "low") & (complete_abund_act$score_activity[x] > activity_syn_5th)){complete_abund_act$abund_act_class[x] <- "2_unstable_active"}
+    if((complete_abund_act$abundance_class[x] == "wt-like") & (complete_abund_act$score_activity[x] < activity_nonsense_5th)){complete_abund_act$abund_act_class[x] <- "4_stable_inactive"}
+    if((complete_abund_act$abundance_class[x] == "low") & (complete_abund_act$score_activity[x] < activity_nonsense_5th)){complete_abund_act$abund_act_class[x] <- "3_unstable_inactive"}
+    if((complete_abund_act$abundance_class[x] == "wt-like") & (complete_abund_act$score_activity[x] > activity_syn_5th)){complete_abund_act$abund_act_class[x] <- "1_stable_active"}
+  }
+}
+
+complete_abund_act$abund_act_class <- factor(complete_abund_act$abund_act_class, levels = c("2_unstable_active","4_stable_inactive","3_unstable_inactive","1_stable_active","NA"))
+
+custom_colorscale2 <- c("2_unstable_active" = "turquoise","4_stable_inactive" = "orange","3_unstable_inactive" = "purple","1_stable_active" = "dark green", "NA" = "grey75")
+complete_abund_act_missense <- subset(complete_abund_act, class == "missense" & !is.na(score_abundance) & !(is.na(score_activity)))
+```
+
+```{r How about literally just subtracting abundance by activity}
+complete_table <- data.frame(table(complete_abund_act_missense$position))
+complete_table <- complete_table[order(complete_table$Freq, decreasing = T),]
+
+loss_of_abundance_table <- data.frame(table(subset(complete_abund_act_missense, abund_act_class == "2_unstable_active")$position))
+loss_of_abundance_table <- loss_of_abundance_table[order(loss_of_abundance_table$Freq, decreasing = T),]
+
+loss_of_activity_table <- data.frame(table(subset(complete_abund_act_missense, abund_act_class == "4_stable_inactive")$position))
+loss_of_activity_table <- loss_of_activity_table[order(loss_of_activity_table$Freq, decreasing = T),]
+
+complete_table <- merge(complete_table, loss_of_abundance_table, by = "Var1", all.x = T)
+complete_table <- merge(complete_table, loss_of_activity_table, by = "Var1", all.x = T)
+colnames(complete_table) <- c("position","complete","loss_of_abundance","loss_of_activity")
+complete_table[is.na(complete_table)] <- 0
+
+loss_of_both_table <- data.frame(table(subset(complete_abund_act_missense, abund_act_class == "3_unstable_inactive")$position))
+loss_of_both_table <- loss_of_both_table[order(loss_of_both_table$Freq, decreasing = T),]
+colnames(loss_of_both_table) <- c("position","loss_of_both")
+
+complete_table <- merge(complete_table, loss_of_both_table, by = "position", all.x = T)
+complete_table[is.na(complete_table)] <- 0
+
+complete_table$percent_loss_of_abundance <- complete_table$loss_of_abundance / complete_table$complete * 100
+complete_table$percent_loss_of_activity <- complete_table$loss_of_activity / complete_table$complete * 100
+complete_table$percent_loss_of_both <- complete_table$loss_of_both / complete_table$complete * 100
+
+low_abund_act_diff <- subset(complete_table, percent_loss_of_abundance >= 50 & complete >= 5)
+high_abund_act_diff <- subset(complete_table, percent_loss_of_activity >= 50 & complete >= 5)
+low_total <- subset(complete_table, percent_loss_of_both >= 50 & complete >= 5)
+
+paste("select low_diff, resi",gsub(", ","+",toString(low_abund_act_diff$position)), "and not name c+n+o")
+paste("select high_diff, resi",gsub(", ","+",toString(high_abund_act_diff$position)), "and not name c+n+o")
+paste("select low, resi",gsub(", ","+",toString(low_total$position)), "and not name c+n+o")
+
+quadrant_plot <- ggplot() + 
+  theme_classic() +
+  theme(legend.position = "none", panel.grid.major = element_line("grey95")) +
+  xlab("Abundance score") + ylab("Activity score") +
+  scale_x_continuous(breaks = c(0,1)) + 
+  scale_y_continuous(breaks = c(0,1)) +
+  scale_color_manual(values = custom_colorscale2) +
+  geom_point(data = complete_abund_act_missense, aes(x = score_abundance, y = score_activity, color = abund_act_class), alpha = 0.2) +
+  geom_hline(yintercept = activity_syn_5th, linetype = 2, color = "red", alpha = 0.5) +
+  geom_hline(yintercept = activity_nonsense_5th, linetype = 2, color = "blue", alpha = 0.5) +
+  geom_vline(xintercept = quantile(subset(complete_abund_act_missense, abundance_class == "wt-like")$score_abundance,0.01, na.rm = T), linetype = 2, color = "red", alpha = 0.5) +
+  geom_vline(xintercept = quantile(subset(complete_abund_act_missense, abundance_class == "low")$score_abundance,0.99), linetype = 2, color = "blue", alpha = 0.5)
+quadrant_plot
+ggsave(file = "plots/quadrant_plot.pdf", quadrant_plot, height = 80, width = 80, units = "mm")
+
+paste("Number of confidently assessed PTEN variants:",nrow(subset(complete_abund_act_missense, abund_act_class != "NA")))
+```
+
+```{r Look at PTEN variants in Autism}
+sfari <- read.delim(file = "input_datatables/Sfari_20191111.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% filter(variant_type %in% c("missense_variant","stop_gained")) %>% filter(residue_change != "-")
+
+sfari$variant3 <- substr(sfari$residue_change, 3, 18)
+sfari$start <- "NA"
+sfari$end <- "NA"
+for(x in 1:nrow(sfari)){
+  sfari$start[x] <- substr(sfari$variant3[x], 1, 3)
+  sfari$end[x] <- substr(sfari$variant3[x], nchar(toString(sfari$variant3[x]))-2, nchar(toString(sfari$variant3[x])))}
+sfari$position <- gsub("[^0-9]", "", sfari$variant3)
+for (x in 1:nrow(sfari)){
+  sfari$start[x] <- to_single_notation(sfari$start[x])
+  sfari$end[x] <- to_single_notation(sfari$end[x])
+}
+sfari$variant <- paste(sfari$start, sfari$position, sfari$end, sep ="")
+
+sfari_summary <- data.frame(table(sfari$variant))
+colnames(sfari_summary) <- c("variant","sfari")
+
+complete_abund_act_missense2 <- merge(complete_abund_act_missense, sfari_summary, by = "variant", all.x = T)
+complete_abund_act_missense2[is.na(complete_abund_act_missense2$sfari),"sfari"] <- 0
+
+clinvar_abundance_activity_aggregate <- rbind(
+  (complete_abund_act_missense2 %>% filter(snv == 1) %>% mutate(grouping = "All_SNV"))[,c("variant","grouping","score_abundance","abund_act_class")],
+  (complete_abund_act_missense2 %>% filter((clinvar_pathog == 1 | clinvar_likely_pathog == 1) & snv == 1) %>% mutate(grouping = "P_LP"))[,c("variant","grouping","score_abundance","abund_act_class")],
+  (complete_abund_act_missense2 %>% filter(clinvar_uncertain == 1 & snv == 1) %>% mutate(grouping = "VUS"))[,c("variant","grouping","score_abundance","abund_act_class")],
+  (complete_abund_act_missense2 %>% filter(snv == 1 & sfari >= 1) %>% mutate(grouping = "ASD"))[,c("variant","grouping","score_abundance","abund_act_class")])
+
+clinvar_abundance_activity_aggregate$grouping <- factor(clinvar_abundance_activity_aggregate$grouping, levels = c("All_SNV","P_LP","VUS","ASD"))
+clinvar_abundance_activity_aggregate2 <- subset(clinvar_abundance_activity_aggregate, abund_act_class != "NA")
+
+clinvar_abundance_activity_aggregate2_summary <- data.frame(table(subset(clinvar_abundance_activity_aggregate2, grouping == "All_SNV")$abund_act_class))
+clinvar_abundance_activity_aggregate2_summary <- merge(clinvar_abundance_activity_aggregate2_summary, data.frame(table(subset(clinvar_abundance_activity_aggregate2, grouping == "P_LP")$abund_act_class)), by = "Var1")
+clinvar_abundance_activity_aggregate2_summary <- merge(clinvar_abundance_activity_aggregate2_summary, data.frame(table(subset(clinvar_abundance_activity_aggregate2, grouping == "VUS")$abund_act_class)), by = "Var1")
+clinvar_abundance_activity_aggregate2_summary <- merge(clinvar_abundance_activity_aggregate2_summary, data.frame(table(subset(clinvar_abundance_activity_aggregate2, grouping == "ASD")$abund_act_class)), by = "Var1")
+colnames(clinvar_abundance_activity_aggregate2_summary) <- c("abund_act_class","All_SNV","P_LP","VUS","ASD")
+
+clinvar_abundance_activity_aggregate2_summary <- clinvar_abundance_activity_aggregate2_summary %>% filter(abund_act_class != "NA") %>%  mutate(freq_all_snv = All_SNV / sum(All_SNV), freq_P_LP = P_LP / sum(P_LP), freq_VUS = VUS / sum(VUS), freq_ASD = ASD / sum(ASD))
+
+clinvar_abundance_activity_aggregate2_summary_melt <- melt(clinvar_abundance_activity_aggregate2_summary[,c("abund_act_class","freq_all_snv","freq_P_LP","freq_VUS","freq_ASD")], id = "abund_act_class")
+clinvar_abundance_activity_aggregate2_summary_melt$abund_act_class <- factor(clinvar_abundance_activity_aggregate2_summary_melt$abund_act_class, levels = c("3_unstable_inactive","4_stable_inactive","2_unstable_active","1_stable_active"))
+
+custom_colorscale3 <- c("3_unstable_inactive" = "purple","4_stable_inactive" = "orange","2_unstable_active" = "turquoise","1_stable_active" = "dark green")
+
+clinvar_abundance_activity_aggregate2_summary_melt$variable <- as.character(clinvar_abundance_activity_aggregate2_summary_melt$variable)
+
+clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_aggregate2_summary_melt$variable == "freq_all_snv","variable"] <- "All SNV"
+clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_aggregate2_summary_melt$variable == "freq_P_LP","variable"] <- "P/LP"
+clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_aggregate2_summary_melt$variable == "freq_VUS","variable"] <- "VUS"
+clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_aggregate2_summary_melt$variable == "freq_ASD","variable"] <- "ASD"
+
+clinvar_abundance_activity_aggregate2_summary_melt$variable <- factor(clinvar_abundance_activity_aggregate2_summary_melt$variable, levels = c("All SNV","P/LP","VUS","ASD"))
+
+
+Clinvar_abundance_activity_barplots <- ggplot() + 
+  theme(legend.position = "top", panel.grid.major.x = element_blank()) +
+  xlab(NULL) + ylab("Fraction of variants") +
+  scale_fill_manual(values = custom_colorscale3) +
+  geom_bar(data = clinvar_abundance_activity_aggregate2_summary_melt, aes(x = variable, y = value, fill = abund_act_class), stat = "identity", alpha = 0.6, color = "black")
+Clinvar_abundance_activity_barplots
+ggsave(file = "plots/Clinvar_abundance_activity_barplots.pdf", Clinvar_abundance_activity_barplots, height = 60, width = 80, units = "mm")
+```
+
+
+```{r TCGA data incorpration}
+impact <- read.delim(file = "input_datatables/cancer_data/IMPACT_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% filter(!(Sample.ID %in% c("P-0000422-T02-IM3","P-0000657-T02-IM5","P-0001442-T02-IM5","P-0000997-T02-IM3","P-0002647-T02-IM5","P-0002738-T02-IM5","P-0002825-T02-IM5","P-0003101-T02-IM5","P-0003101-T03-","P-0006970-T02-IM5IM5","P-0003241-T02-IM5","P-0004910-T04-IM5","P-0004954-T02-IM5","P-0005361-T02-IM5","P-0007076-T03-IM5","P-0008380-T02-IM5")))
+impact$type <- ""
+
+impact[grepl("Uterine",impact$Cancer.Type),"type"] <- "uterine"
+impact[grepl("Lung",impact$Cancer.Type),"type"] <- "lung"
+impact[grepl("Glio",impact$Cancer.Type),"type"] <- "glioma"
+impact[grepl("Astro",impact$Cancer.Type),"type"] <- "glioma"
+impact[grepl("Breast",impact$Cancer.Type),"type"] <- "breast"
+impact[grepl("Prostate",impact$Cancer.Type),"type"] <- "prostate"
+impact[grepl("Colon",impact$Cancer.Type),"type"] <- "colorectal"
+impact[grepl("Gastrointestinal",impact$Cancer.Type),"type"] <- "colorectal"
+impact[grepl("Skin",impact$Cancer.Type),"type"] <- "skin"
+impact[grepl("Melanoma",impact$Cancer.Type),"type"] <- "skin"
+impact[grepl("Cutaneous",impact$Cancer.Type),"type"] <- "skin"
+impact[grepl("Merkel",impact$Cancer.Type),"type"] <- "skin"
+impact[grepl("Renal",impact$Cancer.Type),"type"] <- "renal"
+impact[grepl("Rectal",impact$Cancer.Type),"type"] <- "colorectal"
+impact[grepl("Anal",impact$Cancer.Type),"type"] <- "colorectal"
+impact[grepl("Bladder",impact$Cancer.Type),"type"] <- "bladder"
+impact[grepl("Esophageal",impact$Cancer.Type),"type"] <- "esophagus"
+impact[grepl("Larynx",impact$Cancer.Type),"type"] <- "esophagus"
+impact[grepl("Gastroesophageal",impact$Cancer.Type),"type"] <- "esophagus"
+impact_na <- impact[is.na(impact$type),]
+impact2 <- impact[!is.na(impact$type),]
+
+colorectal <- read.delim(file = "input_datatables/cancer_data/Colorectal_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "colorectal") %>% filter(!(Sample.ID %in% c("P-0000997-T02-IM3","TCGA-A6-6780-01")))
+
+glioma <- read.delim(file = "input_datatables/cancer_data/Glioma_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(Cancer.Type = "Glioma", variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "glioma") %>% filter(!(Sample.ID %in% c("Patient-21-CSF-LP","Patient-21-CSF-VP","Patient-30-CSF-LP","Patient-30-CSF-VP","Patient-25-CSF")))
+#glioma <- glioma[,c("Sample.ID","Cancer.Type","variant","length","type")]
+
+prostate <- read.delim(file = "input_datatables/cancer_data/Prostate_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "prostate") %>% filter(!(Sample.ID %in% c("P-0004910-T04-IM5","PM14-TM","PRAD-01115263-Tumor-SM-6WZF9","PRAD-6115393.0-Tumor-SM-7LGUF","SC_9062-Tumor","SC_9163_Tumor")))
+
+esophagus <- read.delim(file = "input_datatables/cancer_data/Esophagus_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "esophagus")
+
+breast <- read.delim(file = "input_datatables/cancer_data/Breast_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "breast") %>% filter(!(Sample.ID %in% c("MBC-MBCProject_6vTVHzur-Tumor-SM-GQCQV","MBC-MBCProject_GvHkH2Hk-Tumor-SM-AZ5HV","MBC-MBCProject_xBfJfri9-Tumor-SM-CGLAP","P-0000422-T02-IM3","P-0003241-T02-IM5","P-0004388-T02-IM5","SA429X5A-whole_genome","MTS-T0693")))
+
+renal <- read.delim(file = "input_datatables/cancer_data/Renal_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "renal")
+
+skin <- read.delim(file = "input_datatables/cancer_data/Skin_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "skin") %>% filter(!(Sample.ID %in% c("Pat_07_Post","Pat_11_Post","Pat_29_Post","Pat_58_Post","ME009")))
+
+uterine <- read.delim(file = "input_datatables/cancer_data/Uterine_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "uterine")
+
+lung <- read.delim(file = "input_datatables/cancer_data/Lung_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "lung") %>% filter(!(Sample.ID %in% c("LUAD-B01102-Tumor","LUAD-RT-S01702-Tumor","LUAD-RT-S01856-Tumor","P-0001442-T02-IM5","JHU-LX33-R")))
+
+bladder <- read.delim(file = "input_datatables/cancer_data/Bladder_PTEN.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% mutate(length = nchar(Protein.Change)) %>% filter(length <= 5) %>% mutate(variant = gsub("[*]","X",Protein.Change)) %>% group_by(Sample.ID, Cancer.Type) %>% summarize(variant = toString(variant)) %>% mutate(length = nchar(variant)) %>% filter(length <= 5) %>% mutate(type = "bladder") %>% filter(!(Sample.ID %in% c("B66","WCM249_3")))
+
+tcga_rbind <- rbind(impact2, breast, uterine, colorectal, glioma, lung, skin, prostate, bladder, renal, esophagus)
+
+breast_table <- data.frame(table((tcga_rbind %>% filter(type == "breast"))$variant))
+uterine_table <- data.frame(table((tcga_rbind %>% filter(type == "uterine"))$variant))
+colorectal_table <- data.frame(table((tcga_rbind %>% filter(type == "colorectal"))$variant))
+lung_table <- data.frame(table((tcga_rbind %>% filter(type == "lung"))$variant))
+skin_table <- data.frame(table((tcga_rbind %>% filter(type == "skin"))$variant))
+glioma_table <- data.frame(table((tcga_rbind %>% filter(type == "glioma"))$variant))
+prostate_table <- data.frame(table((tcga_rbind %>% filter(type == "prostate"))$variant))
+bladder_table <- data.frame(table((tcga_rbind %>% filter(type == "bladder"))$variant))
+renal_table <- data.frame(table((tcga_rbind %>% filter(type == "renal"))$variant))
+esophagus_table <- data.frame(table((tcga_rbind %>% filter(type == "esophagus"))$variant))
+
+tcga_merge <- merge(data.frame("variant" = breast_table$Var1, "breast" = breast_table$Freq),
+                    data.frame("variant" = uterine_table$Var1, "uterine" = uterine_table$Freq), by = "variant",all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = colorectal_table$Var1, "colorectal" = colorectal_table$Freq), by = "variant", all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = lung_table$Var1, "lung" = lung_table$Freq), by = "variant", all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = skin_table$Var1, "skin" = skin_table$Freq), by = "variant", all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = glioma_table$Var1, "glioma" = glioma_table$Freq), by = "variant", all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = prostate_table$Var1, "prostate" = prostate_table$Freq), by = "variant", all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = bladder_table$Var1, "bladder" = bladder_table$Freq), by = "variant", all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = renal_table$Var1, "renal" = renal_table$Freq), by = "variant", all = T)
+tcga_merge <- merge(tcga_merge, data.frame("variant" = esophagus_table$Var1, "esophagus" = esophagus_table$Freq), by = "variant", all = T)
+```
+
+```{r Now combine all of the above, fig.width = 6, fig.height = 4}
+complete_abund_act2 <- complete_abund_act %>% filter(snv == 1) %>% mutate(position = gsub("[A-Z]","",variant) ,end = substr(gsub("[0-9]","",variant),2,2)) %>% mutate(abund_act_class = as.character(abund_act_class))
+complete_abund_act2[complete_abund_act2$position %in% seq(1,350,1) & complete_abund_act2$end == "X","abund_act_class"] <- "3_unstable_inactive"
+
+abund_act_tcga <- merge(complete_abund_act2[,c("variant","abund_act_class")],tcga_merge, by = "variant", all = T) %>% mutate(count = 1)
+abund_act_tcga[abund_act_tcga$variant %in% c("T319X","Y68H","L152X","V53X","M198X","F104X","V343X","L108X","D109X","F258X","F341X","H93X"),"abund_act_class"] <- "3_unstable_inactive"
+abund_act_tcga[is.na(abund_act_tcga)] <- 0
+abund_act_tcga[abund_act_tcga$abund_act_class == 0,"abund_act_class"] <- "NA"
+
+abund_act_tcga_summary <- abund_act_tcga %>% group_by(abund_act_class) %>% summarize(possible = sum(count), breast = sum(breast), uterine = sum(uterine), colorectal = sum(colorectal), lung = sum(lung), skin = sum(skin), glioma = sum(glioma), prostate = sum(prostate), bladder = sum(bladder), renal = sum(renal), esophagus = sum(esophagus))
+  
+abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)] <- t(t(abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)]) / colSums(abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)]))
+colSums(abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)])
+
+abund_act_tcga_summary2 <- abund_act_tcga_summary %>%  filter(abund_act_class != "NA") 
+
+abund_act_tcga_summary_melt <- melt(as.data.frame(abund_act_tcga_summary2), id = "abund_act_class") %>% filter(variable %in% c("possible","breast","uterine","lung","glioma","skin","renal"))
+
+Cancer_genomics_plot1.pdf = ggplot() + 
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 0, hjust = 0, vjust = 0.5)) +
+  xlab(NULL) + ylab("Fraction of observed variants") +
+  scale_y_log10(limits = c(0.001,1)) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  geom_point(data = subset(abund_act_tcga_summary_melt, variable != "possible"), aes(x = abund_act_class, y = value, color = variable), position=position_dodge(width=0.7), alpha = 1) +
+  geom_point(data = subset(abund_act_tcga_summary_melt, variable == "possible"), aes(x = abund_act_class, y = value), shape = 95, size = 30, alpha = 0.5)
+Cancer_genomics_plot1.pdf
+ggsave(file = "plots/Cancer_genomics_plot1.pdf", Cancer_genomics_plot1.pdf, height = 40, width = 120, units = "mm")
+```
+
+```{r Now combine all of the above, fig.width = 6, fig.height = 4}
+complete_abund_act2 <- complete_abund_act %>% filter(snv == 1) %>% mutate(position = gsub("[A-Z]","",variant) ,end = substr(gsub("[0-9]","",variant),2,2)) %>% mutate(abund_act_class = as.character(abund_act_class))
+complete_abund_act2[complete_abund_act2$variant %in% c("R130G","G129E","R130Q","C124S"),"abund_act_class"] <- "5_known_dominant_negative"
+complete_abund_act2[complete_abund_act2$variant %in% c("P38S","D92H","R130P"),"abund_act_class"] <- "6_novel_dominant_negative"
+complete_abund_act2[complete_abund_act2$position %in% seq(1,350,1) & complete_abund_act2$end == "X","abund_act_class"] <- "3_unstable_inactive"
+
+abund_act_tcga <- merge(complete_abund_act2[,c("variant","abund_act_class")],tcga_merge, by = "variant", all = T) %>% mutate(count = 1)
+abund_act_tcga[abund_act_tcga$variant %in% c("T319X","Y68H","L152X","V53X","M198X","F104X","V343X","L108X","D109X","F258X","F341X","H93X"),"abund_act_class"] <- "3_unstable_inactive"
+abund_act_tcga[is.na(abund_act_tcga)] <- 0
+abund_act_tcga[abund_act_tcga$abund_act_class == 0,"abund_act_class"] <- "NA"
+
+abund_act_tcga_summary <- abund_act_tcga %>% group_by(abund_act_class) %>% summarize(possible = sum(count), breast = sum(breast), uterine = sum(uterine), colorectal = sum(colorectal), lung = sum(lung), skin = sum(skin), glioma = sum(glioma), prostate = sum(prostate), bladder = sum(bladder), renal = sum(renal), esophagus = sum(esophagus))
+  
+abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)] <- t(t(abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)]) / colSums(abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)]))
+colSums(abund_act_tcga_summary[,2:ncol(abund_act_tcga_summary)])
+
+abund_act_tcga_summary2 <- abund_act_tcga_summary %>%  filter(abund_act_class %in% c("4_stable_inactive","5_known_dominant_negative","6_novel_dominant_negative"))
+
+abund_act_tcga_summary_melt <- melt(as.data.frame(abund_act_tcga_summary2), id = "abund_act_class") %>% filter(variable %in% c("possible","breast","uterine","lung","glioma","skin","renal"))
+
+Cancer_genomics_plot2.pdf = ggplot() + 
+  theme_bw() + 
+  theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 0, hjust = 0, vjust = 0.5)) +
+  xlab(NULL) + ylab("Fraction of observed variants") +
+  scale_y_log10(limits = c(0.001,1)) +
+  geom_hline(yintercept = 1, linetype = 2) +
+  geom_point(data = subset(abund_act_tcga_summary_melt, variable != "possible"), aes(x = abund_act_class, y = value, color = variable), position=position_dodge(width=0.7), alpha = 1) +
+  geom_point(data = subset(abund_act_tcga_summary_melt, variable == "possible"), aes(x = abund_act_class, y = value), shape = 95, size = 30, alpha = 0.5)
+Cancer_genomics_plot2.pdf
+ggsave(file = "plots/Cancer_genomics_plot2.pdf", Cancer_genomics_plot2.pdf, height = 40, width = 80, units = "mm")
+
+stable_inactive_tcga <- abund_act_tcga %>% arrange(desc(breast, uterine))
+stable_inactive_to_test <- complete_abund_act_missense %>% filter(variant %in% c("R130P","D92H","D24G","R159S","Y46D","Y16S","T160P"))
+stable_inactive_to_test2 <- merge(stable_inactive_to_test, stable_inactive_tcga[,c("variant","breast","uterine")], by = "variant", all.x = T)
+```
+
+```{r Analyze western blotting data}
+western_blotting <- read.csv(file = "input_datatables/Western_blotting_summary.csv", header = T, stringsAsFactors = F)
+
+blotting_figure_height <- 35
+blotting_figure_width <- 70
+
+pakt <- western_blotting[,c("label","pakt_1","pakt_2","pakt_3")]
+# Divide each data column by the no intensity value
+for(x in 2:ncol(pakt)){pakt[,x] <- pakt[,x] / pakt[1,x]}
+pakt_melted <- melt(pakt, id = "label")
+pakt$mean <- apply(pakt[,c("pakt_1", "pakt_2", "pakt_3")], 1, mean)
+pakt$sd <- apply(pakt[,c("pakt_1", "pakt_2", "pakt_3")], 1, sd)
+pakt$label <- factor(pakt$label, levels = pakt$label)
+pakt_western_plot <- ggplot() + 
+  theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  xlab(NULL) + ylab("Normalized\nintensity\npT308 Akt1") +
+  geom_point(data = pakt, aes(x = label, y = mean), shape = 95, size = 6) + 
+  geom_point(data = pakt_melted, aes(x = label, y = value), size = 1, alpha = 0.3) + 
+  scale_y_log10(limits = c(0.05,50))
+ggsave(file = "Plots/Western_plot_pAKT.pdf", pakt_western_plot, height = blotting_figure_height, width = blotting_figure_width, units = "mm")
+
+akt <- western_blotting[,c("label","akt_1","akt_2","akt_3")]
+# Divide each data column by the no intensity value
+for(x in 2:ncol(akt)){akt[,x] <- akt[,x] / akt[1,x]}
+akt_melted <- melt(akt, id = "label")
+akt$mean <- apply(akt[,c("akt_1", "akt_2", "akt_3")], 1, mean)
+akt$sd <- apply(akt[,c("akt_1", "akt_2", "akt_3")], 1, sd)
+akt$label <- factor(akt$label, levels = akt$label)
+akt_western_plot <- ggplot() + 
+  theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  xlab(NULL) + ylab("Normalized\nintensity\nall Akt") +
+  geom_point(data = akt, aes(x = label, y = mean), shape = 95, size = 6) + 
+  geom_point(data = akt_melted, aes(x = label, y = value), size = 1, alpha = 0.3) + 
+  scale_y_log10(limits = c(0.05,50))
+ggsave(file = "Plots/Western_plot_panAKT.pdf", akt_western_plot, height = blotting_figure_height, width = blotting_figure_width, units = "mm")
+
+ha <- western_blotting[,c("label","ha_1","ha_2","ha_3")]
+# Divide each data column by the WT protein intensity value
+for(x in 2:ncol(ha)){ha[,x] <- ha[,x] / ha[2,x]}
+ha_melted <- melt(ha, id = "label")
+ha$mean <- apply(ha[,c("ha_1", "ha_2", "ha_3")], 1, mean)
+ha$sd <- apply(ha[,c("ha_1", "ha_2", "ha_3")], 1, sd)
+ha$label <- factor(ha$label, levels = ha$label)
+ha_western_plot <- ggplot() + 
+  theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  xlab(NULL) + ylab("Normalized\nintensity\nHA-PTEN") +
+  geom_point(data = ha, aes(x = label, y = mean), shape = 95, size = 6) + 
+  geom_point(data = ha_melted, aes(x = label, y = value), size = 1, alpha = 0.3) + 
+  scale_y_log10(limits = c(0.05,50))
+ggsave(file = "Plots/Western_plot_ha.pdf", ha_western_plot, height = blotting_figure_height, width = blotting_figure_width, units = "mm")
+
+actin <- western_blotting[,c("label","actin_1","actin_2","actin_3")]
+# Divide each data column by the WT protein intensity value
+for(x in 2:ncol(actin)){actin[,x] <- actin[,x] / actin[2,x]}
+actin_melted <- melt(actin, id = "label")
+actin$mean <- apply(actin[,c("actin_1", "actin_2", "actin_3")], 1, mean)
+actin$sd <- apply(actin[,c("actin_1", "actin_2", "actin_3")], 1, sd)
+actin$label <- factor(actin$label, levels = actin$label)
+actin_western_plot <- ggplot() + 
+  theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  xlab(NULL) + ylab("Normalized\nintensity\nbeta-actin") +
+  geom_point(data = actin, aes(x = label, y = mean), shape = 95, size = 6) + 
+  geom_point(data = actin_melted, aes(x = label, y = value), size = 1, alpha = 0.3) + 
+  scale_y_log10(limits = c(0.05,50))
+ggsave(file = "plots/Western_plot_actin.pdf", actin_western_plot, height = blotting_figure_height, width = blotting_figure_width, units = "mm")
+```
+
+
+```{r pAKT vs cancer counts}
+pakt_for_merge <- pakt[,c("label","mean")]
+colnames(pakt_for_merge) <- c("variant","pakt")
+
+tcga_merge_total_count <- tcga_merge
+tcga_merge_total_count$total_cancer_count <- rowSums(tcga_merge_total_count[,colnames(tcga_merge_total_count)[(!(colnames(tcga_merge_total_count) %in% "variant"))]], na.rm = T)
+
+pakt_merged <- merge(pakt_for_merge, tcga_merge_total_count[,c("variant","total_cancer_count")], all.x = T)
+
+pakt_merged[is.na(pakt_merged)] <- 0
+
+pAkt_vs_TCGA_count_plot <- ggplot() + 
+  theme_bw() +
+  geom_text_repel(data = subset(pakt_merged, !(variant %in% c("WT","none"))), aes(x = pakt, y = total_cancer_count, label = variant), color = "red", segment.colour = "orange") +
+  geom_point(data = subset(pakt_merged, !(variant %in% c("WT","none"))), aes(x = pakt, y = total_cancer_count)) +
+  xlab("Normalized Akt1 pT308 by western blot") + 
+  ylab("Total number of variants observed in TCGA") +
+  scale_x_log10(limits = c(0.5,12.5)) +
+  geom_vline(xintercept = 1, linetype = 2, alpha = 0.5) +
+  geom_vline(xintercept = 0.5252194, linetype = 2, alpha = 0.5, color = "blue")
+pAkt_vs_TCGA_count_plot
+ggsave(file = "plots/pAkt_vs_TCGA_count_plot.pdf", pAkt_vs_TCGA_count_plot, height = 60, width = 100, units = "mm")
+
+paste("The Pearson's r of the TCGA variant count and pAKT level scored in our western blot:",round(cor(pakt_merged$pakt, pakt_merged$total_cancer_count, method = "pearson"),2))
+```
+
+
+```{r Dominant negatives in CCLE}
+ccle_muts <- read.csv(file = "input_datatables/CCLE_PTEN_mutations.csv", header = T, stringsAsFactors = FALSE)
+ccle_rppa <- read.csv(file = "input_datatables/CCLE_RPPA_20181003.csv", header = T, stringsAsFactors = FALSE)
+
+colnames(ccle_rppa)
+
+ccle_short <- ccle_rppa[,c("X","Akt_pT308","PTEN")]
+for(x in 1:nrow(ccle_short)){
+  ccle_short$Cell.Line[x] <- strsplit(ccle_short$X[x], "_")[[1]][1]
+}
+
+ccle_muts_missense <- ccle_muts %>% filter(Variant.Classification == "Missense_Mutation") 
+ccle_muts_missense_single <- ccle_muts_missense %>% mutate(number = 1) %>% group_by(Cell.Line) %>% summarize(number = sum(number)) %>% filter(number == 1)
+
+ccle_muts_missense_final <- merge(ccle_muts_missense, ccle_muts_missense_single, by = "Cell.Line")
+
+ccle_merged<- merge(ccle_muts_missense_final, ccle_short, by = "Cell.Line")
+
+ccle_merged$variant <- substr(ccle_merged$Protein.Change,3,15)
+
+
+list_of_dominant_negatives <- c("C124S","R130G","R130Q","P38S","G129E","R130P","D92H")
+list_to_highlight <- c("C124S","R130G","R130Q","P38S","G129E","R130P","D92H", "L42R")
+
+custom_colorscale <- c("C124S" = "red","R130G" = "red","R130Q" = "red","P38S" = "red","G129E" = "red","R130P" = "red","D92H" = "red", "L42R" = "blue")
+
+PTEN_vs_pAkt_in_CCLE <- ggplot() + 
+  theme(legend.position = "none") + 
+  geom_text_repel(data = subset(ccle_merged, variant %in% list_to_highlight), aes(x = PTEN, y = Akt_pT308, label = variant, color = variant), segment.colour = "grey50") +
+  geom_point(data = ccle_merged, aes(x = PTEN, y = Akt_pT308)) +
+  geom_point(data = subset(ccle_merged, variant %in% list_of_dominant_negatives), aes(x = PTEN, y = Akt_pT308), color = "red", size = 0.8) +
+  xlab("PTEN protein level in CCLE") + ylab("Akt1 pT308 protein level in CCLE") +
+  scale_color_manual(values = custom_colorscale)
+PTEN_vs_pAkt_in_CCLE
+ggsave(file = "plots/PTEN_vs_pAkt_in_CCLE.pdf", PTEN_vs_pAkt_in_CCLE, height = 65, width = 100, units = "mm")
+```
+
+
+
