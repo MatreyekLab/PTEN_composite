@@ -5,7 +5,7 @@ date: "6/19/2020"
 output: github_document
 ---
 
-```{r setting up the analysis document}
+```{r setting up the scoring and analysis document}
 rm(list = ls())
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -61,6 +61,667 @@ to_single_notation <- function(arg1){
   if(toupper(arg1) == "TER"){return("X")}
 }
 ```
+
+# This is the scoring portion
+
+```{r Lets get the subassembly map together, warning = FALSE}
+pten_seq <- "MTAIIKEIVSRNKRRYQEDGFDLDLTYIYPNIIAMGFPAERLEGVYRNNIDDVVRFLDSKHKNHYKIYNLCAERHYDTAKFNCRVAQYPFEDHNPPQLELIKPFCEDLDQWLSEDDNHVAAIHCKAGKGRTGVMICAYLLHRGKFLKAQEALDFYGEVRTRDKKGVTIPSQRRYVYYYSYLLKNHLDYRPVALLFHKMMFETIPMFSGGTCNPQFVVCQLKVKIYSSNSGPTRREDKFMYFEFPQPLPVCGDIKVEFFHKQNKMLKKDKMFHFWVNTFFIPGPEETSEKVENGSLCDQEIDSICSIERADNDKEYLVLTLTKNDLDKANKDKANRYFSPNFKVKLYFTKTVEEPSNPEASSSTSVTPDVSDNEPDHYRYSDTTDSDPENEPFDEDQHTQITKV"
+
+map <- read.delim(file = "input_datatables/PTEN_variant_barcode_subassembly.tsv", sep = "\t", header= TRUE, stringsAsFactors = FALSE)
+
+map$aa_pos_1 <- 0
+map$aa_pos_2 <- 0
+map$aa_pos_3 <- 0
+map$aa_pos_4 <- 0
+for(x in 1:nrow(map)){
+  map$aa_pos_1[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map$value[x]), " \\(p"))[2],")"))[1]))
+  map$aa_pos_2[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map$value[x]), " \\(p"))[3],")"))[1]))
+  map$aa_pos_3[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map$value[x]), " \\(p"))[4],")"))[1]))
+  map$aa_pos_4[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map$value[x]), " \\(p"))[5],")"))[1]))
+}
+
+## Get all unique amino acid change positions from above
+map$change1 <- 0
+map$change2 <- 0
+map$change3 <- 0
+for(x in 1:nrow(map)){
+  map$change1[x] <- unique(c(map$aa_pos_1[x], map$aa_pos_2[x], map$aa_pos_3[x], map$aa_pos_4[x])[c(map$aa_pos_1[x], map$aa_pos_2[x], map$aa_pos_3[x], map$aa_pos_4[x]) != ""])[1]
+  map$change2[x] <- unique(c(map$aa_pos_1[x], map$aa_pos_2[x], map$aa_pos_3[x], map$aa_pos_4[x])[c(map$aa_pos_1[x], map$aa_pos_2[x], map$aa_pos_3[x], map$aa_pos_4[x]) != ""])[2]
+  map$change3[x] <- unique(c(map$aa_pos_1[x], map$aa_pos_2[x], map$aa_pos_3[x], map$aa_pos_4[x])[c(map$aa_pos_1[x], map$aa_pos_2[x], map$aa_pos_3[x], map$aa_pos_4[x]) != ""])[3]
+  if(is.na(map$change1[x] & !is.na(map$change2[x]))){map$change1[x] <- map$change2[x]}
+  if(is.na(map$change2[x] & map$change1[x] & !is.na(map$change3[x]))){map$change1[x] <- map$change3[x]}
+}
+
+## Find the number of mutations for each variant
+map$mut_number <- 0
+for(x in 1:nrow(map)){
+  map$mut_number[x] <- 3-sum(is.na(map[x,c("change1","change2","change3")]))
+}
+
+##
+map_singles <- subset(map, mut_number == 1)
+map_wt <- subset(map, value == "_wt" & mut_number == 0)
+map_syn <- subset(map, !is.na(value) & value != "_wt" & mut_number == 0)
+
+map_singles$start_aa3 <- "NA"
+map_singles$end_aa3 <- "NA"
+
+tempy <- subset(map_singles, aa_pos_1 == 1)
+
+for(x in 1:nrow(map_syn)){
+  map_syn$position1[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[1],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_syn$position2[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[2],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_syn$position3[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[3],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_syn$position4[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[4],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_syn$change1[x] <- unique(c(map_syn$position1[x], map_syn$position2[x], map_syn$position3[x], map_syn$position4[x])[c(map_syn$position1[x], map_syn$position2[x], map_syn$position3[x], map_syn$position4[x]) != ""])[1]
+  map_syn$change2[x] <- unique(c(map_syn$position1[x], map_syn$position2[x], map_syn$position3[x], map_syn$position4[x])[c(map_syn$position1[x], map_syn$position2[x], map_syn$position3[x], map_syn$position4[x]) != ""])[2]
+  map_syn$change3[x] <- unique(c(map_syn$position1[x], map_syn$position2[x], map_syn$position3[x], map_syn$position4[x])[c(map_syn$position1[x], map_syn$position2[x], map_syn$position3[x], map_syn$position4[x]) != ""])[3]
+  map_syn$start[x] <- substr(pten_seq,map_syn$change1[x],map_syn$change1[x])
+  map_syn$end[x] <- map_syn$start[x]
+  map_syn$variant[x] <- paste(map_syn$start[x],map_syn$change1[x],map_syn$end[x],sep="")
+}
+
+for(x in 1:nrow(map_singles)){
+  map_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(map_singles$value[x]), split = "\\(p."))[2],1,4)))
+  if(map_singles$start_aa3[x] == "=), "){
+    map_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(map_singles$value[x]), split = "\\(p."))[3],1,4)))
+  }
+  if(map_singles$start_aa3[x] == "=), "){
+    map_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(map_singles$value[x]), split = "\\(p."))[4],1,4)))
+  }
+  map_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[1],nchar(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[1]) - 2,nchar(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[1]))
+  if(map_singles$end_aa3[x] == "p.="){
+    map_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[2],nchar(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[2]) - 2,nchar(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[2]))
+  }
+  if(map_singles$end_aa3[x] == "p.="){
+    map_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[3],nchar(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[3]) - 2,nchar(unlist(strsplit(x = as.character(map_singles$value[x]), split = ")"))[3]))
+  }
+}
+
+for(x in 1:nrow(map_singles)){
+  map_singles$position[x] <- map_singles$aa_pos_1[x]
+  if(map_singles$position[x] == "" | is.na(map_singles$position[x])){
+    map_singles$position[x] <- map_singles$aa_pos_2[x]
+  }
+}
+
+map_singles$start <- "NA"
+map_singles$end <- "NA"
+map_singles$variant <- "NA"
+
+for(x in 1:nrow(map_singles)){
+  map_singles$start[x] <- to_single_notation(map_singles$start_aa3[x])
+  map_singles$end[x] <- to_single_notation(map_singles$end_aa3[x])
+  map_singles$variant[x] <- paste(map_singles$start[x],map_singles$position[x],map_singles$end[x], sep="")
+}
+
+map_nonsense <- subset(map_singles, end == "X")
+map_missense <- subset(map_singles, end != "X")
+
+map_syn$position <- map_syn$position1
+map_wt$class <- "wt"
+map_wt$position <- 0
+map_wt$start <- "Z"
+map_wt$end <- "Z"
+map_syn$class <- "syn"
+map_nonsense$class <- "nonsense"
+map_missense$class <- "missense"
+map_wt$variant <- "wt"
+
+PTEN_library_variant_map <- rbind(map_wt[,c("barcode","variant","position","start","end","class")], map_syn[,c("barcode","variant","position","start","end","class")],map_nonsense[,c("barcode","variant","position","start","end","class")],map_missense[,c("barcode","variant","position","start","end","class")])
+
+write.csv(file = "output_datatables/PTEN_library_variant_map.csv", PTEN_library_variant_map, row.names = FALSE, quote = FALSE)
+```
+
+```{r Look at coverage of my original and fillin libraries}
+map_msn <- read.csv(file = "input_datatables/Map_msn.csv", header = T, stringsAsFactors = F)
+
+original <- subset(map_msn, library == "original")
+fillin <- subset(map_msn, library == "fillin")
+
+length(unique(original$variant))
+length(unique(fillin$variant))
+
+original_variants <- data.frame("variant" = unique(original$variant), "library" = "original")
+fillin_variants <- data.frame("variant" = unique(fillin$variant), "library" = "fillin")
+
+combined_variants <- merge(original_variants, fillin_variants, by = "variant", all = T)
+combined_variants <- combined_variants[!(combined_variants$variant == "wt"),]
+
+combined_variants$library <- "none"
+for(x in 1:nrow(combined_variants)){
+  if(!is.na(combined_variants$library.x[x]) & is.na(combined_variants$library.y[x])){combined_variants$library[x] <- "original"}
+  if(is.na(combined_variants$library.x[x]) & !is.na(combined_variants$library.y[x])){combined_variants$library[x] <- "fillin"}
+  if(!is.na(combined_variants$library.x[x]) & !is.na(combined_variants$library.y[x])){combined_variants$library[x] <- "both"}
+}
+
+combined_variants$position <- gsub("[A-Z]", "", combined_variants$variant)
+combined_variants$start <- substr(gsub("[^A-Z]", "", combined_variants$variant),1,1)
+combined_variants$end <- substr(gsub("[^A-Z]", "", combined_variants$variant),2,2)
+
+combined_variants$position <- as.numeric(combined_variants$position)
+
+combined_variants$library <- factor(combined_variants$library, levels = c("fillin","original","both"))
+PTEN_library_heatmap <- ggplot() + geom_tile(data = combined_variants, aes(x = position, y = end, fill = library)) + scale_x_continuous(expand = c(0,0)) + scale_fill_manual(values = c("brown3","cornflowerblue","black")) + theme(panel.background = element_rect("grey80"), panel.grid.major = element_blank())
+ggsave(fil = "Plots/PTEN_library_heatmap.pdf", PTEN_library_heatmap, height = 3, width = 15)
+PTEN_library_heatmap
+
+combined_variants$count <- 1
+combined_variants2 <- combined_variants %>% group_by(position,library) %>% summarize(count = sum(count))
+combined_variants2$library <- factor(combined_variants2$library, levels = c("fillin","original","both"))
+PTEN_library_bargraph <- ggplot() + geom_bar(data = combined_variants2, aes(x = position, y = count, fill = library), stat = "identity") + scale_fill_manual(values = c("brown3","cornflowerblue","black")) + scale_x_continuous(expand = c(0,0)) + scale_y_continuous(expand = c(0,0))
+ggsave(fil = "plots/PTEN_library_bargraph.pdf", PTEN_library_bargraph, height = 3, width = 15)
+PTEN_library_bargraph
+```
+
+```{r e1s1}
+e1s1_1a1 <- read.delim(file = "enrich2_output/Rep1_Bin1_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_1a2 <- read.delim(file = "enrich2_output/Rep1_Bin1_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_1a3 <- read.delim(file = "enrich2_output/Rep1_Bin1_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_1a <- merge(e1s1_1a1, e1s1_1a2, by = "X", all = T); e1s1_1a <- merge(e1s1_1a, e1s1_1a3, by = "X", all = T); e1s1_1a[is.na(e1s1_1a)] <- 0
+e1s1_1a$count <- rowSums(e1s1_1a[,2:4]); e1s1_1a <- e1s1_1a[,c("X","count")]
+
+e1s1_1b1 <- read.delim(file = "enrich2_output/Rep1_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_1b2 <- read.delim(file = "enrich2_output/Rep1_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_1b3 <- read.delim(file = "enrich2_output/Rep1_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_1b <- merge(e1s1_1b1, e1s1_1b2, by = "X", all = T); e1s1_1b <- merge(e1s1_1b, e1s1_1b3, by = "X", all = T); e1s1_1b[is.na(e1s1_1b)] <- 0
+e1s1_1b$count <- rowSums(e1s1_1b[,2:4]); e1s1_1b <- e1s1_1b[,c("X","count")]
+
+e1s1_2a1 <- read.delim(file = "enrich2_output/Rep1_Bin2_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_2a2 <- read.delim(file = "enrich2_output/Rep1_Bin2_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_2a3 <- read.delim(file = "enrich2_output/Rep1_Bin2_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_2a <- merge(e1s1_2a1, e1s1_2a2, by = "X", all = T); e1s1_2a <- merge(e1s1_2a, e1s1_2a3, by = "X", all = T); e1s1_2a[is.na(e1s1_2a)] <- 0
+e1s1_2a$count <- rowSums(e1s1_2a[,2:4]); e1s1_2a <- e1s1_2a[,c("X","count")]
+
+e1s1_2b1 <- read.delim(file = "enrich2_output/Rep1_Bin2_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_2b2 <- read.delim(file = "enrich2_output/Rep1_Bin2_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_2b3 <- read.delim(file = "enrich2_output/Rep1_Bin2_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_2b <- merge(e1s1_2b1, e1s1_2b2, by = "X", all = T); e1s1_2b <- merge(e1s1_2b, e1s1_2b3, by = "X", all = T); e1s1_2b[is.na(e1s1_2b)] <- 0
+e1s1_2b$count <- rowSums(e1s1_2b[,2:4]); e1s1_2b <- e1s1_2b[,c("X","count")]
+
+e1s1_3a1 <- read.delim(file = "enrich2_output/Rep1_Bin3_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_3a2 <- read.delim(file = "enrich2_output/Rep1_Bin3_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_3a3 <- read.delim(file = "enrich2_output/Rep1_Bin3_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_3a <- merge(e1s1_3a1, e1s1_3a2, by = "X", all = T); e1s1_3a <- merge(e1s1_3a, e1s1_3a3, by = "X", all = T); e1s1_3a[is.na(e1s1_3a)] <- 0
+e1s1_3a$count <- rowSums(e1s1_3a[,2:4]); e1s1_3a <- e1s1_3a[,c("X","count")]
+
+e1s1_3b1 <- read.delim(file = "enrich2_output/Rep1_Bin3_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_3b2 <- read.delim(file = "enrich2_output/Rep1_Bin3_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_3b3 <- read.delim(file = "enrich2_output/Rep1_Bin3_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_3b <- merge(e1s1_3b1, e1s1_3b2, by = "X", all = T); e1s1_3b <- merge(e1s1_3b, e1s1_3b3, by = "X", all = T); e1s1_3b[is.na(e1s1_3b)] <- 0
+e1s1_3b$count <- rowSums(e1s1_3b[,2:4]); e1s1_3b <- e1s1_3b[,c("X","count")]
+
+e1s1_4a1 <- read.delim(file = "enrich2_output/Rep1_Bin4_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_4a2 <- read.delim(file = "enrich2_output/Rep1_Bin4_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_4a3 <- read.delim(file = "enrich2_output/Rep1_Bin4_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_4a <- merge(e1s1_4a1, e1s1_4a2, by = "X", all = T); e1s1_4a <- merge(e1s1_4a, e1s1_4a3, by = "X", all = T); e1s1_4a[is.na(e1s1_4a)] <- 0
+e1s1_4a$count <- rowSums(e1s1_4a[,2:4]); e1s1_4a <- e1s1_4a[,c("X","count")]
+
+e1s1_4b1 <- read.delim(file = "enrich2_output/Rep1_Bin4_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_4b2 <- read.delim(file = "enrich2_output/Rep1_Bin4_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_4b3 <- read.delim(file = "enrich2_output/Rep1_Bin4_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s1_4b <- merge(e1s1_4b1, e1s1_4b2, by = "X", all = T); e1s1_4b <- merge(e1s1_4b, e1s1_4b3, by = "X", all = T); e1s1_4b[is.na(e1s1_4b)] <- 0
+e1s1_4b$count <- rowSums(e1s1_4b[,2:4]); e1s1_4b <- e1s1_4b[,c("X","count")]
+
+e1s1 <- merge(e1s1_1a, e1s1_1b, by = "X", all = TRUE)
+e1s1 <- merge(e1s1, e1s1_2a, by = "X", all = TRUE)
+e1s1 <- merge(e1s1, e1s1_2b, by = "X", all = TRUE)
+e1s1 <- merge(e1s1, e1s1_3a, by = "X", all = TRUE)
+e1s1 <- merge(e1s1, e1s1_3b, by = "X", all = TRUE)
+e1s1 <- merge(e1s1, e1s1_4a, by = "X", all = TRUE)
+e1s1 <- merge(e1s1, e1s1_4b, by = "X", all = TRUE)
+colnames(e1s1) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s1 <- merge(e1s1, PTEN_library_variant_map, by = "barcode", all = FALSE)
+e1s1[is.na(e1s1)] <- 0
+
+e1s1 <- e1s1 %>% group_by(variant) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class))
+
+e1s1$b1 <- e1s1$b1a + e1s1$b1b; e1s1$b2 <- e1s1$b2a + e1s1$b2b;e1s1$b3 <- e1s1$b3a + e1s1$b3b; e1s1$b4 <- e1s1$b4a + e1s1$b4b
+
+ggplot() + geom_point(data = e1s1, aes(x = b1a, y = b1b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s1, aes(x = b2a, y = b2b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s1, aes(x = b3a, y = b3b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s1, aes(x = b4a, y = b4b)) + scale_x_log10() + scale_y_log10()
+
+e1s1$b1 <- e1s1$b1 / sum(e1s1$b1, na.rm = TRUE)
+e1s1$b2 <- e1s1$b2 / sum(e1s1$b2, na.rm = TRUE)
+e1s1$b3 <- e1s1$b3 / sum(e1s1$b3, na.rm = TRUE)
+e1s1$b4 <- e1s1$b4 / sum(e1s1$b4, na.rm = TRUE)
+e1s1$mean_freq <- (e1s1$b1 + e1s1$b2 + e1s1$b3 + e1s1$b4) / 4
+
+frequency_filter <- 1e-5 * 10^(1/4)
+e1s1 <- subset(e1s1, mean_freq > 1e-5 * 10^(1/4))
+e1s1 <- subset(e1s1, mean_freq != 0)
+e1s1$weighted_ave <- (e1s1$b1 * 0 + e1s1$b2 * (1/3) + e1s1$b3 * (2/3) + e1s1$b4) /
+  rowSums(e1s1[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e1s1_weighted_ave.csv", e1s1, row.names = FALSE, quote = FALSE)
+```
+
+```{r e1s2}
+e1s2_1a1 <- read.delim(file = "enrich2_output/Rep2_Bin1_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_1a2 <- read.delim(file = "enrich2_output/Rep2_Bin1_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_1a3 <- read.delim(file = "enrich2_output/Rep2_Bin1_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_1a <- merge(e1s2_1a1, e1s2_1a2, by = "X", all = T); e1s2_1a <- merge(e1s2_1a, e1s2_1a3, by = "X", all = T); e1s2_1a[is.na(e1s2_1a)] <- 0
+e1s2_1a$count <- rowSums(e1s2_1a[,2:4]); e1s2_1a <- e1s2_1a[,c("X","count")]
+
+e1s2_1b1 <- read.delim(file = "enrich2_output/Rep2_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_1b2 <- read.delim(file = "enrich2_output/Rep2_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_1b3 <- read.delim(file = "enrich2_output/Rep2_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_1b <- merge(e1s2_1b1, e1s2_1b2, by = "X", all = T); e1s2_1b <- merge(e1s2_1b, e1s2_1b3, by = "X", all = T); e1s2_1b[is.na(e1s2_1b)] <- 0
+e1s2_1b$count <- rowSums(e1s2_1b[,2:4]); e1s2_1b <- e1s2_1b[,c("X","count")]
+
+e1s2_2a1 <- read.delim(file = "enrich2_output/Rep2_Bin2_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_2a2 <- read.delim(file = "enrich2_output/Rep2_Bin2_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_2a3 <- read.delim(file = "enrich2_output/Rep2_Bin2_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_2a <- merge(e1s2_2a1, e1s2_2a2, by = "X", all = T); e1s2_2a <- merge(e1s2_2a, e1s2_2a3, by = "X", all = T); e1s2_2a[is.na(e1s2_2a)] <- 0
+e1s2_2a$count <- rowSums(e1s2_2a[,2:4]); e1s2_2a <- e1s2_2a[,c("X","count")]
+
+e1s2_2b1 <- read.delim(file = "enrich2_output/Rep2_Bin2_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_2b2 <- read.delim(file = "enrich2_output/Rep2_Bin2_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_2b3 <- read.delim(file = "enrich2_output/Rep2_Bin2_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_2b <- merge(e1s2_2b1, e1s2_2b2, by = "X", all = T); e1s2_2b <- merge(e1s2_2b, e1s2_2b3, by = "X", all = T); e1s2_2b[is.na(e1s2_2b)] <- 0
+e1s2_2b$count <- rowSums(e1s2_2b[,2:4]); e1s2_2b <- e1s2_2b[,c("X","count")]
+
+e1s2_3a1 <- read.delim(file = "enrich2_output/Rep2_Bin3_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_3a2 <- read.delim(file = "enrich2_output/Rep2_Bin3_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_3a3 <- read.delim(file = "enrich2_output/Rep2_Bin3_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_3a <- merge(e1s2_3a1, e1s2_3a2, by = "X", all = T); e1s2_3a <- merge(e1s2_3a, e1s2_3a3, by = "X", all = T); e1s2_3a[is.na(e1s2_3a)] <- 0
+e1s2_3a$count <- rowSums(e1s2_3a[,2:4]); e1s2_3a <- e1s2_3a[,c("X","count")]
+
+e1s2_3b1 <- read.delim(file = "enrich2_output/Rep2_Bin3_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_3b2 <- read.delim(file = "enrich2_output/Rep2_Bin3_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_3b3 <- read.delim(file = "enrich2_output/Rep2_Bin3_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_3b <- merge(e1s2_3b1, e1s2_3b2, by = "X", all = T); e1s2_3b <- merge(e1s2_3b, e1s2_3b3, by = "X", all = T); e1s2_3b[is.na(e1s2_3b)] <- 0
+e1s2_3b$count <- rowSums(e1s2_3b[,2:4]); e1s2_3b <- e1s2_3b[,c("X","count")]
+
+e1s2_4a1 <- read.delim(file = "enrich2_output/Rep2_Bin4_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_4a2 <- read.delim(file = "enrich2_output/Rep2_Bin4_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_4a3 <- read.delim(file = "enrich2_output/Rep2_Bin4_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_4a <- merge(e1s2_4a1, e1s2_4a2, by = "X", all = T); e1s2_4a <- merge(e1s2_4a, e1s2_4a3, by = "X", all = T); e1s2_4a[is.na(e1s2_4a)] <- 0
+e1s2_4a$count <- rowSums(e1s2_4a[,2:4]); e1s2_4a <- e1s2_4a[,c("X","count")]
+
+e1s2_4b1 <- read.delim(file = "enrich2_output/Rep2_Bin4_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_4b2 <- read.delim(file = "enrich2_output/Rep2_Bin4_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_4b3 <- read.delim(file = "enrich2_output/Rep2_Bin4_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s2_4b <- merge(e1s2_4b1, e1s2_4b2, by = "X", all = T); e1s2_4b <- merge(e1s2_4b, e1s2_4b3, by = "X", all = T); e1s2_4b[is.na(e1s2_4b)] <- 0
+e1s2_4b$count <- rowSums(e1s2_4b[,2:4]); e1s2_4b <- e1s2_4b[,c("X","count")]
+
+e1s2 <- merge(e1s2_1a, e1s2_1b, by = "X", all = TRUE)
+e1s2 <- merge(e1s2, e1s2_2a, by = "X", all = TRUE)
+e1s2 <- merge(e1s2, e1s2_2b, by = "X", all = TRUE)
+e1s2 <- merge(e1s2, e1s2_3a, by = "X", all = TRUE)
+e1s2 <- merge(e1s2, e1s2_3b, by = "X", all = TRUE)
+e1s2 <- merge(e1s2, e1s2_4a, by = "X", all = TRUE)
+e1s2 <- merge(e1s2, e1s2_4b, by = "X", all = TRUE)
+colnames(e1s2) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s2 <- merge(e1s2, PTEN_library_variant_map, by = "barcode", all = FALSE)
+e1s2[is.na(e1s2)] <- 0
+
+e1s2 <- e1s2 %>% group_by(variant) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class))
+
+e1s2$b1 <- e1s2$b1a + e1s2$b1b; e1s2$b2 <- e1s2$b2a + e1s2$b2b;e1s2$b3 <- e1s2$b3a + e1s2$b3b; e1s2$b4 <- e1s2$b4a + e1s2$b4b
+
+ggplot() + geom_point(data = e1s2, aes(x = b1a, y = b1b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s2, aes(x = b2a, y = b2b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s2, aes(x = b3a, y = b3b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s2, aes(x = b4a, y = b4b)) + scale_x_log10() + scale_y_log10()
+
+e1s2$b1 <- e1s2$b1 / sum(e1s2$b1, na.rm = TRUE)
+e1s2$b2 <- e1s2$b2 / sum(e1s2$b2, na.rm = TRUE)
+e1s2$b3 <- e1s2$b3 / sum(e1s2$b3, na.rm = TRUE)
+e1s2$b4 <- e1s2$b4 / sum(e1s2$b4, na.rm = TRUE)
+e1s2$mean_freq <- (e1s2$b1 + e1s2$b2 + e1s2$b3 + e1s2$b4) / 4
+e1s2 <- subset(e1s2, mean_freq > 1e-5 * 10^(1/4))
+e1s2 <- subset(e1s2, mean_freq != 0)
+e1s2$weighted_ave <- (e1s2$b1 * 0 + e1s2$b2 * (1/3) + e1s2$b3 * (2/3) + e1s2$b4) /
+  rowSums(e1s2[,c("b1","b2","b3","b4")])
+
+write.csv(file = "Output_datatables/e1s2_weighted_ave.csv", e1s2, row.names = FALSE, quote = FALSE)
+```
+
+```{r e1s3}
+e1s3_1a1 <- read.delim(file = "enrich2_output/Rep3_Bin1_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_1a2 <- read.delim(file = "enrich2_output/Rep3_Bin1_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_1a3 <- read.delim(file = "enrich2_output/Rep3_Bin1_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_1a <- merge(e1s3_1a1, e1s3_1a2, by = "X", all = T); e1s3_1a <- merge(e1s3_1a, e1s3_1a3, by = "X", all = T); e1s3_1a[is.na(e1s3_1a)] <- 0
+e1s3_1a$count <- rowSums(e1s3_1a[,2:4]); e1s3_1a <- e1s3_1a[,c("X","count")]
+
+e1s3_1b1 <- read.delim(file = "enrich2_output/Rep3_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_1b2 <- read.delim(file = "enrich2_output/Rep3_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_1b3 <- read.delim(file = "enrich2_output/Rep3_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_1b <- merge(e1s3_1b1, e1s3_1b2, by = "X", all = T); e1s3_1b <- merge(e1s3_1b, e1s3_1b3, by = "X", all = T); e1s3_1b[is.na(e1s3_1b)] <- 0
+e1s3_1b$count <- rowSums(e1s3_1b[,2:4]); e1s3_1b <- e1s3_1b[,c("X","count")]
+
+e1s3_2a1 <- read.delim(file = "enrich2_output/Rep3_Bin2_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_2a2 <- read.delim(file = "enrich2_output/Rep3_Bin2_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_2a3 <- read.delim(file = "enrich2_output/Rep3_Bin2_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_2a <- merge(e1s3_2a1, e1s3_2a2, by = "X", all = T); e1s3_2a <- merge(e1s3_2a, e1s3_2a3, by = "X", all = T); e1s3_2a[is.na(e1s3_2a)] <- 0
+e1s3_2a$count <- rowSums(e1s3_2a[,2:4]); e1s3_2a <- e1s3_2a[,c("X","count")]
+
+e1s3_2b1 <- read.delim(file = "enrich2_output/Rep3_Bin2_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_2b2 <- read.delim(file = "enrich2_output/Rep3_Bin2_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_2b3 <- read.delim(file = "enrich2_output/Rep3_Bin2_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_2b <- merge(e1s3_2b1, e1s3_2b2, by = "X", all = T); e1s3_2b <- merge(e1s3_2b, e1s3_2b3, by = "X", all = T); e1s3_2b[is.na(e1s3_2b)] <- 0
+e1s3_2b$count <- rowSums(e1s3_2b[,2:4]); e1s3_2b <- e1s3_2b[,c("X","count")]
+
+e1s3_3a1 <- read.delim(file = "enrich2_output/Rep3_Bin3_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_3a2 <- read.delim(file = "enrich2_output/Rep3_Bin3_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_3a3 <- read.delim(file = "enrich2_output/Rep3_Bin3_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_3a <- merge(e1s3_3a1, e1s3_3a2, by = "X", all = T); e1s3_3a <- merge(e1s3_3a, e1s3_3a3, by = "X", all = T); e1s3_3a[is.na(e1s3_3a)] <- 0
+e1s3_3a$count <- rowSums(e1s3_3a[,2:4]); e1s3_3a <- e1s3_3a[,c("X","count")]
+
+e1s3_3b1 <- read.delim(file = "enrich2_output/Rep3_Bin3_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_3b2 <- read.delim(file = "enrich2_output/Rep3_Bin3_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_3b3 <- read.delim(file = "enrich2_output/Rep3_Bin3_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_3b <- merge(e1s3_3b1, e1s3_3b2, by = "X", all = T); e1s3_3b <- merge(e1s3_3b, e1s3_3b3, by = "X", all = T); e1s3_3b[is.na(e1s3_3b)] <- 0
+e1s3_3b$count <- rowSums(e1s3_3b[,2:4]); e1s3_3b <- e1s3_3b[,c("X","count")]
+
+e1s3_4a1 <- read.delim(file = "enrich2_output/Rep3_Bin4_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_4a2 <- read.delim(file = "enrich2_output/Rep3_Bin4_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_4a3 <- read.delim(file = "enrich2_output/Rep3_Bin4_PCR1_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_4a <- merge(e1s3_4a1, e1s3_4a2, by = "X", all = T); e1s3_4a <- merge(e1s3_4a, e1s3_4a3, by = "X", all = T); e1s3_4a[is.na(e1s3_4a)] <- 0
+e1s3_4a$count <- rowSums(e1s3_4a[,2:4]); e1s3_4a <- e1s3_4a[,c("X","count")]
+
+e1s3_4b1 <- read.delim(file = "enrich2_output/Rep3_Bin4_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_4b2 <- read.delim(file = "enrich2_output/Rep3_Bin4_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_4b3 <- read.delim(file = "enrich2_output/Rep3_Bin4_PCR2_Seq3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s3_4b <- merge(e1s3_4b1, e1s3_4b2, by = "X", all = T); e1s3_4b <- merge(e1s3_4b, e1s3_4b3, by = "X", all = T); e1s3_4b[is.na(e1s3_4b)] <- 0
+e1s3_4b$count <- rowSums(e1s3_4b[,2:4]); e1s3_4b <- e1s3_4b[,c("X","count")]
+
+e1s3 <- merge(e1s3_1a, e1s3_1b, by = "X", all = TRUE)
+e1s3 <- merge(e1s3, e1s3_2a, by = "X", all = TRUE)
+e1s3 <- merge(e1s3, e1s3_2b, by = "X", all = TRUE)
+e1s3 <- merge(e1s3, e1s3_3a, by = "X", all = TRUE)
+e1s3 <- merge(e1s3, e1s3_3b, by = "X", all = TRUE)
+e1s3 <- merge(e1s3, e1s3_4a, by = "X", all = TRUE)
+e1s3 <- merge(e1s3, e1s3_4b, by = "X", all = TRUE)
+colnames(e1s3) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s3 <- merge(e1s3, PTEN_library_variant_map, by = "barcode", all = FALSE)
+e1s3[is.na(e1s3)] <- 0
+
+e1s3 <- e1s3 %>% group_by(variant) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class))
+
+e1s3$b1 <- e1s3$b1a + e1s3$b1b; e1s3$b2 <- e1s3$b2a + e1s3$b2b;e1s3$b3 <- e1s3$b3a + e1s3$b3b; e1s3$b4 <- e1s3$b4a + e1s3$b4b
+
+ggplot() + geom_point(data = e1s3, aes(x = b1a, y = b1b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s3, aes(x = b2a, y = b2b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s3, aes(x = b3a, y = b3b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s3, aes(x = b4a, y = b4b)) + scale_x_log10() + scale_y_log10()
+
+e1s3$b1 <- e1s3$b1 / sum(e1s3$b1, na.rm = TRUE)
+e1s3$b2 <- e1s3$b2 / sum(e1s3$b2, na.rm = TRUE)
+e1s3$b3 <- e1s3$b3 / sum(e1s3$b3, na.rm = TRUE)
+e1s3$b4 <- e1s3$b4 / sum(e1s3$b4, na.rm = TRUE)
+e1s3$mean_freq <- (e1s3$b1 + e1s3$b2 + e1s3$b3 + e1s3$b4) / 4
+e1s3 <- subset(e1s3, mean_freq > 1e-5 * 10^(1/4))
+e1s3 <- subset(e1s3, mean_freq != 0)
+e1s3$weighted_ave <- (e1s3$b1 * 0 + e1s3$b2 * (1/3) + e1s3$b3 * (2/3) + e1s3$b4) /
+  rowSums(e1s3[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e1s3_weighted_ave.csv", e1s3, row.names = FALSE, quote = FALSE)
+```
+
+```{r e1s4}
+e1s4_1a1 <- read.delim(file = "enrich2_output/Rep4_Bin1_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_1a2 <- read.delim(file = "enrich2_output/Rep4_Bin1_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_1a <- merge(e1s4_1a1, e1s4_1a2, by = "X", all = T); e1s4_1a[is.na(e1s4_1a)] <- 0; e1s4_1a$count <- e1s4_1a$count.x + e1s4_1a$count.y; e1s4_1a <- e1s4_1a[,c("X","count")]
+e1s4_1b1 <- read.delim(file = "enrich2_output/Rep4_Bin1_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_1b2 <- read.delim(file = "enrich2_output/Rep4_Bin1_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_1b <- merge(e1s4_1b1, e1s4_1b2, by = "X", all = T); e1s4_1b[is.na(e1s4_1b)] <- 0; e1s4_1b$count <- e1s4_1b$count.x + e1s4_1b$count.y; e1s4_1b <- e1s4_1b[,c("X","count")]
+e1s4_2a1 <- read.delim(file = "enrich2_output/Rep4_Bin2_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_2a2 <- read.delim(file = "enrich2_output/Rep4_Bin2_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_2a <- merge(e1s4_2a1, e1s4_2a2, by = "X", all = T); e1s4_2a[is.na(e1s4_2a)] <- 0; e1s4_2a$count <- e1s4_2a$count.x + e1s4_2a$count.y; e1s4_2a <- e1s4_2a[,c("X","count")]
+e1s4_2b1 <- read.delim(file = "enrich2_output/Rep4_Bin2_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_2b2 <- read.delim(file = "enrich2_output/Rep4_Bin2_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_2b <- merge(e1s4_2b1, e1s4_2b2, by = "X", all = T); e1s4_2b[is.na(e1s4_2b)] <- 0; e1s4_2b$count <- e1s4_2b$count.x + e1s4_2b$count.y; e1s4_2b <- e1s4_2b[,c("X","count")]
+e1s4_3a1 <- read.delim(file = "enrich2_output/Rep4_Bin3_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_3a2 <- read.delim(file = "enrich2_output/Rep4_Bin3_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_3a <- merge(e1s4_3a1, e1s4_3a2, by = "X", all = T); e1s4_3a[is.na(e1s4_3a)] <- 0; e1s4_3a$count <- e1s4_3a$count.x + e1s4_3a$count.y; e1s4_3a <- e1s4_3a[,c("X","count")]
+e1s4_3b1 <- read.delim(file = "enrich2_output/Rep4_Bin3_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_3b2 <- read.delim(file = "enrich2_output/Rep4_Bin3_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_3b <- merge(e1s4_3b1, e1s4_3b2, by = "X", all = T); e1s4_3b[is.na(e1s4_3b)] <- 0; e1s4_3b$count <- e1s4_3b$count.x + e1s4_3b$count.y; e1s4_3b <- e1s4_3b[,c("X","count")]
+e1s4_4a1 <- read.delim(file = "enrich2_output/Rep4_Bin4_PCR1_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_4a2 <- read.delim(file = "enrich2_output/Rep4_Bin4_PCR1_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_4a <- merge(e1s4_4a1, e1s4_4a2, by = "X", all = T); e1s4_4a[is.na(e1s4_4a)] <- 0; e1s4_4a$count <- e1s4_4a$count.x + e1s4_4a$count.y; e1s4_4a <- e1s4_4a[,c("X","count")]
+e1s4_4b1 <- read.delim(file = "enrich2_output/Rep4_Bin4_PCR2_Seq1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_4b2 <- read.delim(file = "enrich2_output/Rep4_Bin4_PCR2_Seq2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e1s4_4b <- merge(e1s4_4b1, e1s4_4b2, by = "X", all = T); e1s4_4b[is.na(e1s4_4b)] <- 0; e1s4_4b$count <- e1s4_4b$count.x + e1s4_4b$count.y; e1s4_4b <- e1s4_4b[,c("X","count")]
+
+e1s4 <- merge(e1s4_1a, e1s4_1b, by = "X", all = TRUE)
+e1s4 <- merge(e1s4, e1s4_2a, by = "X", all = TRUE)
+e1s4 <- merge(e1s4, e1s4_2b, by = "X", all = TRUE)
+e1s4 <- merge(e1s4, e1s4_3a, by = "X", all = TRUE)
+e1s4 <- merge(e1s4, e1s4_3b, by = "X", all = TRUE)
+e1s4 <- merge(e1s4, e1s4_4a, by = "X", all = TRUE)
+e1s4 <- merge(e1s4, e1s4_4b, by = "X", all = TRUE)
+colnames(e1s4) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s4 <- merge(e1s4, PTEN_library_variant_map, by = "barcode", all = FALSE)
+e1s4[is.na(e1s4)] <- 0
+
+e1s4 <- e1s4 %>% group_by(variant) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class))
+
+e1s4$b1 <- e1s4$b1a + e1s4$b1b; e1s4$b2 <- e1s4$b2a + e1s4$b2b;e1s4$b3 <- e1s4$b3a + e1s4$b3b; e1s4$b4 <- e1s4$b4a + e1s4$b4b
+
+ggplot() + geom_point(data = e1s4, aes(x = b1a, y = b1b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s4, aes(x = b2a, y = b2b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s4, aes(x = b3a, y = b3b)) + scale_x_log10() + scale_y_log10()
+ggplot() + geom_point(data = e1s4, aes(x = b4a, y = b4b)) + scale_x_log10() + scale_y_log10()
+
+e1s4$b1 <- e1s4$b1 / sum(e1s4$b1, na.rm = TRUE)
+e1s4$b2 <- e1s4$b2 / sum(e1s4$b2, na.rm = TRUE)
+e1s4$b3 <- e1s4$b3 / sum(e1s4$b3, na.rm = TRUE)
+e1s4$b4 <- e1s4$b4 / sum(e1s4$b4, na.rm = TRUE)
+e1s4$mean_freq <- (e1s4$b1 + e1s4$b2 + e1s4$b3 + e1s4$b4) / 4
+e1s4 <- subset(e1s4, mean_freq > 1e-5 * 10^(1/4))
+e1s4 <- subset(e1s4, mean_freq != 0)
+e1s4$weighted_ave <- (e1s4$b1 * 0 + e1s4$b2 * (1/3) + e1s4$b3 * (2/3) + e1s4$b4) /
+  rowSums(e1s4[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e1s4_weighted_ave.csv", e1s4, row.names = FALSE, quote = FALSE)
+```
+
+```{r e3s1}
+e3s1_1a <- read.delim(file = "enrich2_output/Rep5_Bin1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s1_2a <- read.delim(file = "enrich2_output/Rep5_Bin2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s1_3a <- read.delim(file = "enrich2_output/Rep5_Bin3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s1_4a <- read.delim(file = "enrich2_output/Rep5_Bin4.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+e3s1 <- merge(e3s1_1a, e3s1_2a, by = "X", all = TRUE)
+e3s1 <- merge(e3s1, e3s1_3a, by = "X", all = TRUE)
+e3s1 <- merge(e3s1, e3s1_4a, by = "X", all = TRUE)
+colnames(e3s1) <- c("barcode","b1","b2","b3","b4")
+e3s1 <- merge(e3s1, PTEN_library_variant_map, by = "barcode", all = FALSE)
+e3s1[is.na(e3s1)] <- 0
+
+e3s1 <- e3s1 %>% group_by(variant) %>% summarize(b1 = sum(b1), b2 = sum(b2), b3 = sum(b3), b4 = sum(b4), class = unique(class))
+
+e3s1$b1 <- e3s1$b1 / sum(e3s1$b1, na.rm = TRUE)
+e3s1$b2 <- e3s1$b2 / sum(e3s1$b2, na.rm = TRUE)
+e3s1$b3 <- e3s1$b3 / sum(e3s1$b3, na.rm = TRUE)
+e3s1$b4 <- e3s1$b4 / sum(e3s1$b4, na.rm = TRUE)
+e3s1$mean_freq <- (e3s1$b1 + e3s1$b2 + e3s1$b3 + e3s1$b4) / 4
+e3s1 <- subset(e3s1, mean_freq > 1e-5 * 10^(1/4))
+e3s1 <- subset(e3s1, mean_freq != 0)
+e3s1$weighted_ave <- (e3s1$b1 * 0 + e3s1$b2 * (1/3) + e3s1$b3 * (2/3) + e3s1$b4) /
+  rowSums(e3s1[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e3s1_weighted_ave.csv", e3s1, row.names = FALSE, quote = FALSE)
+```
+
+```{r e3s2}
+e3s2_1a <- read.delim(file = "enrich2_output/Rep6_Bin1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s2_2a <- read.delim(file = "enrich2_output/Rep6_Bin2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s2_3a <- read.delim(file = "enrich2_output/Rep6_Bin3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s2_4a <- read.delim(file = "enrich2_output/Rep6_Bin4.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+e3s2 <- merge(e3s2_1a, e3s2_2a, by = "X", all = TRUE)
+e3s2 <- merge(e3s2, e3s2_3a, by = "X", all = TRUE)
+e3s2 <- merge(e3s2, e3s2_4a, by = "X", all = TRUE)
+colnames(e3s2) <- c("barcode","b1","b2","b3","b4")
+e3s2 <- merge(e3s2, PTEN_library_variant_map, by = "barcode", all = FALSE)
+e3s2[is.na(e3s2)] <- 0
+
+e3s2 <- e3s2 %>% group_by(variant) %>% summarize(b1 = sum(b1), b2 = sum(b2), b3 = sum(b3), b4 = sum(b4), class = unique(class))
+
+e3s2$b1 <- e3s2$b1 / sum(e3s2$b1, na.rm = TRUE)
+e3s2$b2 <- e3s2$b2 / sum(e3s2$b2, na.rm = TRUE)
+e3s2$b3 <- e3s2$b3 / sum(e3s2$b3, na.rm = TRUE)
+e3s2$b4 <- e3s2$b4 / sum(e3s2$b4, na.rm = TRUE)
+e3s2$mean_freq <- (e3s2$b1 + e3s2$b2 + e3s2$b3 + e3s2$b4) / 4
+e3s2 <- subset(e3s2, mean_freq > 1e-5 * 10^(1/4))
+e3s2 <- subset(e3s2, mean_freq != 0)
+e3s2$weighted_ave <- (e3s2$b1 * 0 + e3s2$b2 * (1/3) + e3s2$b3 * (2/3) + e3s2$b4) /
+  rowSums(e3s2[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e3s2_weighted_ave.csv", e3s2, row.names = FALSE, quote = FALSE)
+```
+
+```{r e3s3}
+e3s3_1a <- read.delim(file = "enrich2_output/Rep7_Bin1.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s3_2a <- read.delim(file = "enrich2_output/Rep7_Bin2.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s3_3a <- read.delim(file = "enrich2_output/Rep7_Bin3.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+e3s3_4a <- read.delim(file = "enrich2_output/Rep7_Bin4.tsv", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+e3s3 <- merge(e3s3_1a, e3s3_2a, by = "X", all = TRUE)
+e3s3 <- merge(e3s3, e3s3_3a, by = "X", all = TRUE)
+e3s3 <- merge(e3s3, e3s3_4a, by = "X", all = TRUE)
+colnames(e3s3) <- c("barcode","b1","b2","b3","b4")
+e3s3 <- merge(e3s3, PTEN_library_variant_map, by = "barcode", all = FALSE)
+e3s3[is.na(e3s3)] <- 0
+
+e3s3 <- e3s3 %>% group_by(variant) %>% summarize(b1 = sum(b1), b2 = sum(b2), b3 = sum(b3), b4 = sum(b4), class = unique(class))
+
+e3s3$b1 <- e3s3$b1 / sum(e3s3$b1, na.rm = TRUE)
+e3s3$b2 <- e3s3$b2 / sum(e3s3$b2, na.rm = TRUE)
+e3s3$b3 <- e3s3$b3 / sum(e3s3$b3, na.rm = TRUE)
+e3s3$b4 <- e3s3$b4 / sum(e3s3$b4, na.rm = TRUE)
+e3s3$mean_freq <- (e3s3$b1 + e3s3$b2 + e3s3$b3 + e3s3$b4) / 4
+e3s3 <- subset(e3s3, mean_freq > 1e-5 * 10^(1/4))
+e3s3 <- subset(e3s3, mean_freq != 0)
+e3s3$weighted_ave <- (e3s3$b1 * 0 + e3s3$b2 * (1/3) + e3s3$b3 * (2/3) + e3s3$b4) /
+  rowSums(e3s3[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e3s3_weighted_ave.csv", e3s3, row.names = FALSE, quote = FALSE)
+```
+
+```{r Importing pre-calculated weighted averages and scaling}
+e1s1 <- read.csv(file = "output_datatables/e1s1_weighted_ave.csv", header = T, stringsAsFactors = F)
+e1s2 <- read.csv(file = "output_datatables/e1s2_weighted_ave.csv", header = T, stringsAsFactors = F)
+e1s3 <- read.csv(file = "output_datatables/e1s3_weighted_ave.csv", header = T, stringsAsFactors = F)
+e1s4 <- read.csv(file = "output_datatables/e1s4_weighted_ave.csv", header = T, stringsAsFactors = F)
+e3s1 <- read.csv(file = "output_datatables/e3s1_weighted_ave.csv", header = T, stringsAsFactors = F)
+e3s2 <- read.csv(file = "output_datatables/e3s2_weighted_ave.csv", header = T, stringsAsFactors = F)
+e3s3 <- read.csv(file = "output_datatables/e3s3_weighted_ave.csv", header = T, stringsAsFactors = F)
+
+e1s1$position <- as.numeric(gsub("[A-Z]", "", e1s1$variant))
+e1s1$score1 <- (e1s1$weighted_ave - median(subset(e1s1, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s1, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s1, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e1s2$position <- as.numeric(gsub("[A-Z]", "", e1s2$variant))
+e1s2$score2 <- (e1s2$weighted_ave - median(subset(e1s2, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s2, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s2, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e1s3$position <- as.numeric(gsub("[A-Z]", "", e1s3$variant))
+e1s3$score3 <- (e1s3$weighted_ave - median(subset(e1s3, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s3, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s3, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e1s4$position <- as.numeric(gsub("[A-Z]", "", e1s4$variant))
+e1s4$score4 <- (e1s4$weighted_ave - median(subset(e1s4, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s4, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s4, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e3s1$position <- as.numeric(gsub("[A-Z]", "", e3s1$variant))
+e3s1$score5 <- (e3s1$weighted_ave - median(subset(e3s1, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e3s1, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e3s1, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e3s2$position <- as.numeric(gsub("[A-Z]", "", e3s2$variant))
+e3s2$score6 <- (e3s2$weighted_ave - median(subset(e3s2, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e3s2, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e3s2, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e3s3$position <- as.numeric(gsub("[A-Z]", "", e3s3$variant))
+e3s3$score7 <- (e3s3$weighted_ave - median(subset(e3s3, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e3s3, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e3s3, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+```
+
+
+```{r Combining stuff}
+replicates <- merge(e1s1[,c("variant","score1")], e1s2[,c("variant","score2")], by = "variant", all = TRUE)
+replicates <- merge(replicates, e1s3[,c("variant","score3")], by = "variant", all = TRUE)
+replicates <- merge(replicates, e1s4[,c("variant","score4")], by = "variant", all = TRUE)
+replicates <- merge(replicates, e3s1[,c("variant","score5")], by = "variant", all = TRUE)
+replicates <- merge(replicates, e3s2[,c("variant","score6")], by = "variant", all = TRUE)
+replicates <- merge(replicates, e3s3[,c("variant","score7")], by = "variant", all = TRUE)
+
+colnames(replicates) <- c("variant","e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")
+replicates$average <- rowMeans(replicates[,c("e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")], na.rm = TRUE)
+replicates$count <- rowSums(cbind(!is.na(replicates$e1s1),!is.na(replicates$e1s2),!is.na(replicates$e1s3),!is.na(replicates$e1s4),!is.na(replicates$e3s1),!is.na(replicates$e3s2),!is.na(replicates$e3s3)))
+
+replicates$sd <- rowMeans(cbind(abs(replicates$average-replicates$e1s1), abs(replicates$average-replicates$e1s2)
+                                , abs(replicates$average-replicates$e1s3), abs(replicates$average-replicates$e1s4),
+                                abs(replicates$average-replicates$e3s1),abs(replicates$average-replicates$e3s2),abs(replicates$average-replicates$e3s3)), na.rm = T)
+
+
+replicates$class <- "single"
+replicates$start <- substr(gsub("[0-9]","",replicates$variant), 1,1)
+replicates$end <- substr(gsub("[0-9]","",replicates$variant), 2,2)
+replicates$position <- gsub("[^0-9]","",replicates$variant)
+replicates[replicates$end == "X","class"] <- "nonsense"
+replicates[replicates$class == "single","class"] <- "missense"
+replicates[replicates$start == replicates$end,"class"] <- "synonymous"
+replicates[replicates$variant == "wt","start"] <- "Z"
+replicates[replicates$variant == "wt","position"] <- "0"
+replicates[replicates$variant == "wt","end"] <- "Z"
+
+## Let's try to put in some abundance classifications here
+
+replicates$se <- replicates$sd / sqrt(replicates$count)
+replicates$lower_ci <- replicates$average - qnorm(0.975) * replicates$se
+replicates$upper_ci <- replicates$average + qnorm(0.975) * replicates$se
+replicates["average" == "NaN"] <- NA
+
+synonymous_lowest_5percent <- quantile(subset(replicates, class == "synonymous")$average, 0.05, na.rm = TRUE)
+synonymous_median <- quantile(subset(replicates, class == "synonymous")$average, 0.5, na.rm = TRUE)
+```
+
+
+```{r Scoring things with a replicate filter}
+replicate_filter <- 4
+passing_replicate_filter <- subset(replicates, count >= replicate_filter)
+
+passing_replicate_filter$abundance_class <- NA
+for (x in 1:nrow(passing_replicate_filter)){
+  if(is.na(passing_replicate_filter$average[x])){passing_replicate_filter$abundance_class[x] <- "unknown"}
+  if(passing_replicate_filter$average[x] < synonymous_lowest_5percent & passing_replicate_filter$upper_ci[x] >= synonymous_lowest_5percent){passing_replicate_filter$abundance_class[x] <- "possibly_low"}
+  if(passing_replicate_filter$average[x] < synonymous_lowest_5percent & passing_replicate_filter$upper_ci[x] < synonymous_lowest_5percent){passing_replicate_filter$abundance_class[x] <- "low"}
+  if(passing_replicate_filter$average[x] > synonymous_lowest_5percent & passing_replicate_filter$lower_ci[x] < synonymous_lowest_5percent){passing_replicate_filter$abundance_class[x] <- "possibly_wt-like"}
+  if(passing_replicate_filter$average[x] > synonymous_lowest_5percent & passing_replicate_filter$lower_ci[x] >= synonymous_lowest_5percent){passing_replicate_filter$abundance_class[x] <- "wt-like"}
+}
+
+replicates <- merge(replicates, passing_replicate_filter[,c("variant","abundance_class")], by = "variant", all.x = T)
+write.csv(file = "Output_datatables/PTEN_fillin_vampseq_combined.csv", replicates, row.names = FALSE, quote = FALSE)
+
+pten_fillin_vampseq <- ggplot() + 
+  geom_density(data = subset(passing_replicate_filter, class == "missense"), aes(x = average), alpha = 0.4) +
+  geom_density(data = subset(passing_replicate_filter, class == "nonsense" & (position > 50 | position < 350)), aes(x = average), fill = "blue", alpha = 0.4) +
+  geom_density(data = subset(passing_replicate_filter, class == "synonymous"), aes(x = average), fill = "red", alpha = 0.4) +
+  geom_vline(xintercept = subset(passing_replicate_filter, variant == "wt")$average)
+pten_fillin_vampseq
+ggsave(file = "Plots/PTEN_fillin_VAMPseq_densityplot.pdf", pten_fillin_vampseq, height = 3, width = 5)
+
+pten_fillin_vampseq <- ggplot() + 
+  geom_histogram(data = subset(passing_replicate_filter, class == "missense"), aes(x = average), alpha = 0.4) +
+  geom_histogram(data = subset(passing_replicate_filter, class == "nonsense" & (position > 50 | position < 350)), aes(x = average), fill = "blue", alpha = 0.4) +
+  geom_histogram(data = subset(passing_replicate_filter, class == "synonymous"), aes(x = average), fill = "red", alpha = 0.4) +
+  geom_vline(xintercept = subset(passing_replicate_filter, variant == "wt")$average)
+pten_fillin_vampseq
+ggsave(file = "Plots/PTEN_fillin_VAMPseq_histogram.pdf", pten_fillin_vampseq, height = 3, width = 5)
+```
+
+# This is now the analysis portion
 
 ## Import all relevant datasets
 ```{r Make composite abundance score using all replicates}
@@ -234,7 +895,7 @@ ggsave(file = "Plots/Replicate_cutoff_nonsense_syn_plot.pdf", replicate_cutoff_n
 ```
 
 
-# Using the optimal replicae filter value obtained from the above graph to actually filter the data
+# Using the optimal replicate filter value obtained from the above graph to actually filter the data
 ```{r Using above graph make the right dataset}
 combined$score_abundance <- NA
 for(x in 1:nrow(combined)){
