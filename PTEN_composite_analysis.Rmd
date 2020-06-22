@@ -1594,7 +1594,7 @@ ggsave(file = "plots/quadrant_plot.pdf", quadrant_plot, height = 80, width = 80,
 paste("Number of confidently assessed PTEN variants:",nrow(subset(complete_abund_act_missense, abund_act_class != "NA")))
 ```
 
-```{r Look at PTEN variants in Autism}
+```{r Look at PHTS variants in ClinVar and autism-associated variants in sfari}
 sfari <- read.delim(file = "input_datatables/Sfari_20191111.tsv", sep = "\t", header = T, stringsAsFactors = F) %>% filter(variant_type %in% c("missense_variant","stop_gained")) %>% filter(residue_change != "-")
 
 sfari$variant3 <- substr(sfari$residue_change, 3, 18)
@@ -1647,7 +1647,6 @@ clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_ag
 
 clinvar_abundance_activity_aggregate2_summary_melt$variable <- factor(clinvar_abundance_activity_aggregate2_summary_melt$variable, levels = c("All SNV","P/LP","VUS","ASD"))
 
-
 Clinvar_abundance_activity_barplots <- ggplot() + 
   theme(legend.position = "top", panel.grid.major.x = element_blank()) +
   xlab(NULL) + ylab("Fraction of variants") +
@@ -1655,7 +1654,15 @@ Clinvar_abundance_activity_barplots <- ggplot() +
   geom_bar(data = clinvar_abundance_activity_aggregate2_summary_melt, aes(x = variable, y = value, fill = abund_act_class), stat = "identity", alpha = 0.6, color = "black")
 Clinvar_abundance_activity_barplots
 ggsave(file = "plots/Clinvar_abundance_activity_barplots.pdf", Clinvar_abundance_activity_barplots, height = 60, width = 80, units = "mm")
+
+#### Noting how many VUS are in one of the three loss-of-function categories
+paste("The number of VUS in the dataset:",nrow(complete_abund_act_missense %>% filter(clinvar_uncertain != 0)))
+
+paste("The number of VUS in the dataset that are low activity or low abundance:",nrow(complete_abund_act_missense %>% filter(clinvar_uncertain != 0 & (abundance_class == "low" | score_activity < activity_nonsense_5th))))
+
 ```
+
+
 
 
 ```{r TCGA data incorpration}
@@ -1730,7 +1737,7 @@ tcga_merge <- merge(tcga_merge, data.frame("variant" = renal_table$Var1, "renal"
 tcga_merge <- merge(tcga_merge, data.frame("variant" = esophagus_table$Var1, "esophagus" = esophagus_table$Freq), by = "variant", all = T)
 ```
 
-```{r Now combine all of the above, fig.width = 6, fig.height = 4}
+```{r TCGA plot, fig.width = 6, fig.height = 4}
 complete_abund_act2 <- complete_abund_act %>% filter(snv == 1) %>% mutate(position = gsub("[A-Z]","",variant) ,end = substr(gsub("[0-9]","",variant),2,2)) %>% mutate(abund_act_class = as.character(abund_act_class))
 complete_abund_act2[complete_abund_act2$position %in% seq(1,350,1) & complete_abund_act2$end == "X","abund_act_class"] <- "3_unstable_inactive"
 
