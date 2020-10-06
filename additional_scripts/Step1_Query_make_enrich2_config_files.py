@@ -1,7 +1,8 @@
 import glob
 import codecs
 import sys
-query_directory = "/Users/kmatreyek/Google_Drive/_Analysis_BLANK_SLATE_PTEN_FILLIN"  ### This should be whatever directory all of your fastq.gz files are in
+import os
+query_directory = os.getcwd()  ### This should be whatever directory all of your fastq.gz files are in
 query_files = glob.glob(query_directory + "/*.fastq.gz")
 
 for x in range(0,len(query_files)):

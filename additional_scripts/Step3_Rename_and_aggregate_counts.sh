@@ -1,5 +1,4 @@
 #!/bin/sh
-#cd /Users/kmatreyek/Desktop/km017_Nextseq_spike_170208/Split
 
 mkdir Renamed_tsv_files
 cwd=$(pwd)
