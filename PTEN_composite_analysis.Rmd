@@ -1008,6 +1008,19 @@ write.csv(file = "output_datatables/PTEN_abundance_table.csv", row.names = F, PT
 
 # A summary of key stats from the composite abundance dataset
 ```{r Combined data}
+
+unassigned_so_far <- subset(combined, !is.na(score_abundance) & !(class %in% c("synonymous","nonsense","missense")))
+## Looks like a few synonymous variants were not classified that. Go back and do that now.
+for(x in 1:nrow(combined)){
+  if(is.na(combined$start[x])){
+    combined$start[x] <- substr(gsub("[^A-Za-z]", "", combined$variant[x]),1,1)
+    combined$end[x] <- substr(gsub("[^A-Za-z]", "", combined$variant[x]),2,2)
+    combined$position[x] <- gsub("[^0-9]", "", combined$variant[x])
+    if(combined$start[x] == combined$end[x]){combined$class[x] <- "synonymous"}
+  }
+}
+combined <- combined %>% filter(position != "")
+
 paste("Number of variants that were not scored before but now have scores",nrow(combined %>% filter(is.na(score_orig) & !is.na(score_abundance))))
 
 paste("Number of variants that were originally scored but given new data with the fill-in experiments:",nrow(combined %>% filter(!is.na(score_orig)) %>% filter((!is.na(score9) | !is.na(score10) | !is.na(score11) | !is.na(score12) | !is.na(score13) | !is.na(score14) | !is.na(score15))) %>% filter(count_total >= 4)))
@@ -1185,7 +1198,6 @@ colnames(plp_table) <- c("abundance_class","count")
 plp_table$count_interpreted <- plp_table$count
 plp_table[plp_table$abundance_class == "unknown","count_interpreted"] <- 0
 plp_table[plp_table$abundance_class == "low","count_interpreted"] / sum(plp_table$count_interpreted)
-
 
 combined_for_plotting_clinvar$clinvar <- factor(combined_for_plotting_clinvar$clinvar, levels = c("All SNV","Pathog","Likely pathog","Uncertain","GnomAD inferred benign"))
 
@@ -1410,6 +1422,7 @@ paste("Number of variants with activity scores:", count_activity_scores)
 ```{r Abundance vs functional}
 complete_abund_act <- subset(combined_abund_act, !is.na(score_abundance) & !(is.na(score_activity)))
 complete_abund_act$abund_act_class <- "NA"
+paste("Number of missense variants with abundance and activity scores:", nrow(complete_abund_act %>% filter(class == "missense")))
 
 for(x in 1:nrow(complete_abund_act)){
   if(!(is.na(complete_abund_act$score_activity[x])) & !(is.na(complete_abund_act$score_abundance[x]))){
@@ -1562,7 +1575,7 @@ clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_ag
 clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_aggregate2_summary_melt$variable == "freq_VUS","variable"] <- "VUS"
 clinvar_abundance_activity_aggregate2_summary_melt[clinvar_abundance_activity_aggregate2_summary_melt$variable == "freq_ASD","variable"] <- "ASD"
 
-clinvar_abundance_activity_aggregate2_summary_melt$variable <- factor(clinvar_abundance_activity_aggregate2_summary_melt$variable, levels = c("All SNV","P/LP","VUS","ASD"))
+clinvar_abundance_activity_aggregate2_summary_melt$variable <- factor(clinvar_abundance_activity_aggregate2_summary_melt$variable, levels = c("All SNV","P/LP","ASD","VUS"))
 
 Clinvar_abundance_activity_barplots <- ggplot() + 
   theme(legend.position = "top", panel.grid.major.x = element_blank()) +
@@ -1572,10 +1585,13 @@ Clinvar_abundance_activity_barplots <- ggplot() +
 Clinvar_abundance_activity_barplots
 ggsave(file = "plots/Clinvar_abundance_activity_barplots.pdf", Clinvar_abundance_activity_barplots, height = 60, width = 80, units = "mm")
 
-#### Noting how many VUS are in one of the three loss-of-function categories
-paste("The number of VUS in the dataset:",nrow(complete_abund_act_missense %>% filter(clinvar_uncertain != 0)))
+#### Noting how many Pathog or Likely Pathog variants are in one of the three loss-of-function categories
+paste("The number of Pathog or Likely Pathog in the dataset:",nrow(complete_abund_act_missense2 %>% filter((clinvar_pathog == 1 | clinvar_likely_pathog == 1) & (abund_act_class != "NA"))))
 
-paste("The number of VUS in the dataset that are low activity or low abundance:",nrow(complete_abund_act_missense %>% filter(clinvar_uncertain != 0 & (abundance_class == "low" | score_activity < activity_nonsense_5th))))
+#### Noting how many VUS are in one of the three loss-of-function categories
+paste("The number of VUS in the dataset:",nrow(complete_abund_act_missense2 %>% filter(clinvar_uncertain != 0 & abund_act_class != "NA")))
+
+paste("The number of VUS in the dataset that are low activity or low abundance:",nrow(complete_abund_act_missense2 %>% filter(clinvar_uncertain != 0 & (abundance_class == "low" | score_activity < activity_nonsense_5th) & (abund_act_class != "NA"))))
 
 ```
 
@@ -1783,6 +1799,13 @@ ggsave(file = "plots/Cancer_genomics_plot2.pdf", Cancer_genomics_plot2.pdf, heig
 stable_inactive_tcga <- abund_act_tcga %>% arrange(desc(breast, uterine))
 stable_inactive_to_test <- complete_abund_act_missense %>% filter(variant %in% c("R130P","D92H","D24G","R159S","Y46D","Y16S","T160P"))
 stable_inactive_to_test2 <- merge(stable_inactive_to_test, stable_inactive_tcga[,c("variant","breast","uterine")], by = "variant", all.x = T)
+
+### Also, quantifying what fraction of the enrichment of the loss-of-activity only variants is due ot the known dominant negatives
+paste("Fraction of breast cancer loss-of-activity only variants accounted for by known dom negs:",round(abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "5_known_dominant_negative","breast"] / (abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "5_known_dominant_negative","breast"] + abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "6_other_loss_of_activity_only","breast"]),2))
+
+paste("Fraction of uterine cancer loss-of-activity only variants accounted for by known dom negs:",round(abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "5_known_dominant_negative","uterine"] / (abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "5_known_dominant_negative","uterine"] + abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "6_other_loss_of_activity_only","uterine"]),2))
+
+paste("Fraction of lung cancer loss-of-activity only variants accounted for by known dom negs:",round(abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "5_known_dominant_negative","lung"] / (abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "5_known_dominant_negative","lung"] + abund_act_tcga_summary2[abund_act_tcga_summary2$abund_act_class == "6_other_loss_of_activity_only","lung"]),2))
 ```
 
 ```{r Analyze western blotting data}
@@ -1861,7 +1884,6 @@ tcga_merge_total_count <- tcga_merge
 tcga_merge_total_count$total_cancer_count <- rowSums(tcga_merge_total_count[,colnames(tcga_merge_total_count)[(!(colnames(tcga_merge_total_count) %in% "variant"))]], na.rm = T)
 
 pakt_merged <- merge(pakt_for_merge, tcga_merge_total_count[,c("variant","total_cancer_count")], all.x = T)
-
 pakt_merged[is.na(pakt_merged)] <- 0
 
 pAkt_vs_TCGA_count_plot <- ggplot() + 
@@ -1882,26 +1904,18 @@ paste("The Pearson's r of the TCGA variant count and pAKT level scored in our we
 ccle_muts <- read.csv(file = "input_datatables/CCLE_PTEN_mutations.csv", header = T, stringsAsFactors = FALSE)
 ccle_rppa <- read.csv(file = "input_datatables/CCLE_RPPA_20181003.csv", header = T, stringsAsFactors = FALSE)
 
-colnames(ccle_rppa)
-
 ccle_short <- ccle_rppa[,c("X","Akt_pT308","PTEN")]
-for(x in 1:nrow(ccle_short)){
-  ccle_short$Cell.Line[x] <- strsplit(ccle_short$X[x], "_")[[1]][1]
-}
+for(x in 1:nrow(ccle_short)){ccle_short$Cell.Line[x] <- strsplit(ccle_short$X[x], "_")[[1]][1]}
 
 ccle_muts_missense <- ccle_muts %>% filter(Variant.Classification == "Missense_Mutation") 
 ccle_muts_missense_single <- ccle_muts_missense %>% mutate(number = 1) %>% group_by(Cell.Line) %>% summarize(number = sum(number)) %>% filter(number == 1)
-
 ccle_muts_missense_final <- merge(ccle_muts_missense, ccle_muts_missense_single, by = "Cell.Line")
 
 ccle_merged<- merge(ccle_muts_missense_final, ccle_short, by = "Cell.Line")
-
 ccle_merged$variant <- substr(ccle_merged$Protein.Change,3,15)
-
 
 list_of_dominant_negatives <- c("C124S","R130G","R130Q","P38S","G129E","R130P","D92H")
 list_to_highlight <- c("C124S","R130G","R130Q","P38S","G129E","R130P","D92H", "L42R")
-
 custom_colorscale <- c("C124S" = "red","R130G" = "red","R130Q" = "red","P38S" = "red","G129E" = "red","R130P" = "red","D92H" = "red", "L42R" = "blue")
 
 PTEN_vs_pAkt_in_CCLE <- ggplot() + 
