@@ -1,0 +1,100 @@
+status	allele_change	residue_change	variant_type	inheritance_pattern	parental_transmission	family_type	pubmed_id	author_year
+	c.392C>T	p.Ala131Val	missense_variant	De novo	NA	Simplex	23160955	"O'Roak BJ , et al. (2012)"
+	c.397G>A	p.Ala133Thr	missense_variant	Familial	Maternal	-	28250423	"Saskin A , et al. (2017)"
+	c.420_421insA	p.Ala141SerfsTer43	frameshift_variant	Unknown	-	Unknown	23695273	"Hobert JA , et al. (2013)"
+	c.100del	p.Ala34LeufsTer20	frameshift_variant	Unknown	-	Unknown	25363760	"De Rubeis S , et al. (2014)"
+	c.102C>T	p.Ala34Val	missense_variant	Unknown	-	-	31130284	"Monies D , et al. (2019)"
+	c.235G>A	p.Ala79Thr	missense_variant	Familial	Maternal	-	31209962	"Aspromonte MC , et al. (2019)"
+	c.389G>A	p.Arg130Gln	missense_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.389G>A	p.Arg130Gln	missense_variant	Unknown	Not maternal	-	30528446	"Ciaccio C , et al. (2018)"
+	c.389G>C	p.Arg130Pro	missense_variant	De novo	NA	-	30528446	"Ciaccio C , et al. (2018)"
+	c.388C>T	p.Arg130Ter	stop_gained	Familial	Paternal	Simplex	19265751	"Varga EA , et al. (2009)"
+	c.44G>T	p.Arg15Ile	missense_variant	De novo	NA	-	28771251	"Lionel AC , et al. (2017)"
+	c.518G>A	p.Arg173His	missense_variant	Familial	Paternal	Simplex	20533527	"McBride KL , et al. (2010)"
+	c.518G>A	p.Arg173His	missense_variant	Familial	Maternal	Multi-generational	19265751	"Varga EA , et al. (2009)"
+	c.697C>T	p.Arg233Ter	stop_gained	Unknown	-	-	30528446	"Ciaccio C , et al. (2018)"
+	c.697C>T	p.Arg233Ter	stop_gained	De novo	NA	-	30528446	"Ciaccio C , et al. (2018)"
+	c.697C>T	p.Arg233Ter	stop_gained	Familial	Paternal	-	30528446	"Ciaccio C , et al. (2018)"
+	c.697C>T	p.Arg233Ter	stop_gained	Unknown	Not paternal	Multiplex	19265751	"Varga EA , et al. (2009)"
+	c.1003C>T	p.Arg335Ter	stop_gained	De novo	NA	-	29608813	"Wong CW , et al. (2018)"
+	c.1003C>T	p.Arg335Ter	stop_gained	De novo	NA	-	20814261	"Stein MT , et al. (2010)"
+	c.1003C>T	p.Arg335Ter	stop_gained	De novo	NA	-	30528446	"Ciaccio C , et al. (2018)"
+	c.1003C>T	p.Arg335Ter	stop_gained	Unknown	-	Unknown	23695273	"Hobert JA , et al. (2013)"
+	c.827A>G	p.Asn276Ser	missense_variant	De novo	NA	-	18759867	"Orrico A , et al. (2008)"
+	c.66C>G	p.Asp22Glu	missense_variant	Familial	Paternal	Multiplex	17427195	"Buxbaum JD , et al. (2007)"
+	c.755A>G	p.Asp252Gly	missense_variant	De novo	NA	Simplex	15805158	"Butler MG , et al. (2005)"
+	c.976G>A	p.Asp326Asn	missense_variant	De novo	NA	-	17427195	"Buxbaum JD , et al. (2007)"
+	c.1110_1111insATAGT	p.Asp371IlefsTer47	frameshift_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.274G>A	p.Asp92Asn	missense_variant	De novo	NA	Simplex	25961944	"Krumm N , et al. (2015)"
+	c.315G>T	p.Cys105Phe	missense_variant	De novo	NA	-	29296277	"Yeung KS , et al. (2018)"
+	c.406T>C	p.Cys136Arg	missense_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.405dup	p.Cys136MetfsTer44	frameshift_variant	Familial	Paternal	-	30763456	"Zhou WZ , et al. (2019)"
+	c.195C>A	p.Cys65Ter	stop_gained	Unknown	-	Unknown	26637798	"D'Gama AM , et al. (2015)"
+	c.249C>A	p.Cys83Ter	stop_gained	Unknown	-	-	32477112	Lee J et al. (2020)
+	c.329dup	p.Gln110ProfsTer5	frameshift_variant	Familial	-	-	29608813	"Wong CW , et al. (2018)"
+	c.388C>T	p.Gln130Ter	stop_gained	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.470A>G	p.Gln157Arg	missense_variant	De novo	NA	Multiplex (identical twins)	19265751	"Varga EA , et al. (2009)"
+	c.640C>T	p.Gln214Ter	stop_gained	Familial	Maternal	Simplex	23160955	"O'Roak BJ , et al. (2012)"
+	c.640C>T	p.Gln214Ter	stop_gained	Unknown	Not maternal	Simplex	28086757	"Negishi Y , et al. (2017)"
+	c.402G>C	p.Glu134Asp	missense_variant	Familial	Maternal	Multiplex	23124040	"Busa T , et al. (2012)"
+	c.449A>G	p.Glu150Gly	missense_variant	De novo	NA	Simplex	31981491	Satterstrom FK et al. (2020)
+	c.19G>T	p.Glu7Ter	stop_gained	De novo	NA	Simplex	31981491	Satterstrom FK et al. (2020)
+	c.380G>C	p.Gly127Ala	missense_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.494G>T	p.Gly165Val	missense_variant	De novo	NA	-	26325558	"Tammimies K , et al. (2015)"
+	c.131G>A	p.Gly44Asp	missense_variant	Unknown	-	Unknown	19265751	"Varga EA , et al. (2009)"
+	c.353A>C	p.His118Pro	missense_variant	De novo	NA	-	18759867	"Orrico A , et al. (2008)"
+	c.182C>T	p.His61Tyr	missense_variant	Unknown	-	Unknown	31130284	"Monies D , et al. (2019)"
+	c.225_226del	p.His75LeufsTer2	frameshift_variant	De novo	NA	Simplex	31130284	"Monies D , et al. (2019)"
+	c.278A>G	p.His93Arg	missense_variant	De novo	NA	Simplex	15805158	"Butler MG , et al. (2005)"
+	c.302T>C	p.Ile101Thr	missense_variant	De novo	NA	-	30528446	"Ciaccio C , et al. (2018)"
+	c.302T>C	p.Ile101Thr	missense_variant	De novo	NA	Multiplex	31398340	"Ruzzo EK , et al. (2019)"
+	c.302T>C	p.Ile101Thr	missense_variant	De novo	NA	Simplex	31981491	Satterstrom FK et al. (2020)
+	c.303T>C	p.Ile101Thr	missense_variant	De novo	NA	-	29608813	"Wong CW , et al. (2018)"
+	c.149T>C	p.Ile50Thr	missense_variant	Familial	Maternal	-	28250423	"Saskin A , et al. (2017)"
+	c.323T>C	p.Leu108Pro	missense_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.416T>A	p.Leu139Ter	stop_gained	Familial	Paternal	Simplex	19265751	"Varga EA , et al. (2009)"
+	c.512_513insACA	p.Leu171_Pro172insHis	inframe_insertion	De novo	NA	-	30528446	"Ciaccio C , et al. (2018)"
+	c.741T>C	p.Leu247Ser	missense_variant	De novo	NA	Simplex	28086757	"Negishi Y , et al. (2017)"
+	c.75G>T	p.Leu25Phe	missense_variant	Unknown	-	-	30528446	"Ciaccio C , et al. (2018)"
+	c.960T>C	p.Leu320Ser	missense_variant	De novo	NA	Simplex	31149344	"Ueno Y , et al. (2019)"
+	c.320A>T	p.Lys107Met	missense_variant	De novo	NA	Simplex	25418537	"O'Roak BJ , et al. (2014)"
+	c.38A>G	p.Lys13Glu	missense_variant	Unknown	-	Unknown	31130284	"Monies D , et al. (2019)"
+	c.493G>T	p.Lys164Asn	missense_variant	Familial	Maternal	Multi-generational	29296277	"Yeung KS , et al. (2018)"
+	c.548del	p.Lys183ArgfsTer16	frameshift_variant	De novo	NA	Simplex	31981491	Satterstrom FK et al. (2020)
+	c.549del	p.Lys183ArgfsTer16	frameshift_variant	De novo	NA	-	29296277	"Yeung KS , et al. (2018)"
+	c.801G>T	p.Lys267Asn	missense_variant	De novo	NA	-	30528446	"Ciaccio C , et al. (2018)"
+	c.400A>T	p.Met134Leu	missense_variant	Unknown	-	Unknown	25363760	"De Rubeis S , et al. (2014)"
+	c.401T>C	p.Met134Thr	missense_variant	Familial	Maternal	Multi-generational	20533527	"McBride KL , et al. (2010)"
+	c.810T>A	p.Met270Lys	missense_variant	De novo	NA	Simplex	31674007	"Wu H , et al. (2019)"
+	c.618C>G	p.Phe206Leu	missense_variant	Unknown	-	Simplex	21624971	"Schaaf CP , et al. (2011)"
+	c.722T>C	p.Phe241Ser	missense_variant	De novo	NA	Simplex	15805158	"Butler MG , et al. (2005)"
+	c.1176del	p.Phe392LeufsTer24	frameshift_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.611del	p.Pro204GlnfsTer17	frameshift_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.737C>T	p.Pro246Leu	missense_variant	De novo	NA	Simplex	30555518	"Du X , et al. (2018)"
+	c.737C>T	p.Pro246Leu	missense_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.737C>T	p.Pro246Leu	missense_variant	De novo	NA	Simplex	28263302	C Yuen RK et al. (2017)
+	c.737C>T	p.Pro246Leu	missense_variant	De novo	NA	-	23934111	"Epi4K Consortium , et al. (2013)"
+	c.176C>G	p.Pro59Arg	stop_gained	Familial	Paternal	Multi-generational	30482242	"Gruhl SL , et al. (2018)"
+	c.208C>G	p.Pro70Ala	missense_variant	Unknown	-	Unknown	23695273	"Hobert JA , et al. (2013)"
+	c.27del	p.Ser10AlafsTer14	frameshift_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.510T>A	p.Ser170Arg	missense_variant	Familial	Maternal	-	30528446	"Ciaccio C , et al. (2018)"
+	c.510G>C	p.Ser170Thr	missense_variant	De novo	NA	-	29296277	"Yeung KS , et al. (2018)"
+	c.686C>A	p.Ser229Ter	stop_gained	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.1013del	p.Ser338LeufsTer6	frameshift_variant	De novo	NA	Simplex	31674007	"Wu H , et al. (2019)"
+	c.500C>A	p.Thr167Asn	missense_variant	De novo	NA	Simplex	22495309	"O'Roak BJ , et al. (2012)"
+	c.605C>T	p.Thr202Ile	missense_variant	De novo	NA	-	19265751	"Varga EA , et al. (2009)"
+	c.955insA	p.Thr319AsnfsTer6	frameshift_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.232A>G	p.Thr78Ala	missense_variant	De novo	NA	Simplex	21624971	"Schaaf CP , et al. (2011)"
+	c.821G>T	p.Trp274Leu	missense_variant	Familial	Maternal	Multi-generational	20533527	"McBride KL , et al. (2010)"
+	c.369C>G	p.Tyr123Ter	missense_variant	Unknown	-	Unknown	20533527	"McBride KL , et al. (2010)"
+	c.462dup	p.Tyr155LeufsTer25	frameshift_variant	Familial	Maternal	-	30763456	"Zhou WZ , et al. (2019)"
+	c.464A>C	p.Tyr155Ser	missense_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.521A>G	p.Tyr174Cys	missense_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
+	c.520dup	p.Tyr174LeufsTer6	frameshift_variant	De novo	NA	-	19265751	"Varga EA , et al. (2009)"
+	c.527A>G	p.Tyr176Cys	missense_variant	De novo	NA	-	18759867	"Orrico A , et al. (2008)"
+	c.534T>G	p.Tyr178Ter	stop_gained	Familial	Maternal	-	11496368	"Goffin A , et al. (2001)"
+	c.87T>G	p.Tyr29Ter	stop_gained	De novo	NA	-	28991257	"Jin SC , et al. (2017)"
+	NM_000314.5:c.1006C>G	p.Tyr336Ter	stop_gained	De novo	NA	Simplex	28086757	"Negishi Y , et al. (2017)"
+	c.204A>G	p.Tyr68Cys	missense_variant	De novo	NA	-	29296277	"Yeung KS , et al. (2018)"
+	c.545T>C	p.Val182Ala	missense_variant	Familial	Both parents	Multiplex	26443266	"Schwerd T , et al. (2015)"
+	c.1027del	p.Val343Ter	frameshift_variant	Unknown	-	Unknown	32959437	Shao DD et al. (2020)
