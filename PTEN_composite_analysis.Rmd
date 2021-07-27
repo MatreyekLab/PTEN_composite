@@ -226,7 +226,7 @@ PTEN_library_heatmap
 
 combined_variants$count <- 1
 combined_variants2 <- combined_variants %>% group_by(position,library) %>% summarize(count = sum(count))
-combined_variants2$library <- factor(combined_variants2$library, levels = c("fillin","original","both"))
+#combined_variants2$library <- factor(combined_variants2$library, levels = c("fillin","original","both"))
 PTEN_library_bargraph <- ggplot() + geom_bar(data = combined_variants2, aes(x = position, y = count, fill = library), stat = "identity") + scale_fill_manual(values = c("brown3","cornflowerblue","black")) + scale_x_continuous(expand = c(0,0)) + scale_y_continuous(expand = c(0,0))
 ggsave(fil = "plots/PTEN_library_bargraph.pdf", PTEN_library_bargraph, height = 3, width = 15)
 PTEN_library_bargraph
@@ -951,9 +951,9 @@ combined_for_plotting_classes <- rbind(
 
 combined_for_plotting_classes$plotting_group = factor(combined_for_plotting_classes$plotting_group, levels = c("synonymous","nonsense","missense"))
 
-syn_non_mis_hist_n_frame <- data.frame("n" = c(nrow(subset(combined_for_plotting_classes, plotting_group == "synonymous")),
-                                               nrow(subset(combined_for_plotting_classes, plotting_group == "nonsense")),
-                                               nrow(subset(combined_for_plotting_classes, plotting_group == "missense"))),
+syn_non_mis_hist_n_frame <- data.frame("n" = c(nrow(subset(combined_for_plotting_classes, plotting_group == "synonymous" & !is.na(score_abundance))),
+                                               nrow(subset(combined_for_plotting_classes, plotting_group == "nonsense" & !is.na(score_abundance))),
+                                               nrow(subset(combined_for_plotting_classes, plotting_group == "missense" & !is.na(score_abundance)))),
                                        "plotting_group" = c("synonymous","nonsense","missense"), "y" = c(15,20,300))
 
 Synonymous_nonsense_missense_histograms_plot <- ggplot() + 
@@ -1005,7 +1005,7 @@ ggplot() + theme_bw() +
   geom_vline(xintercept = 0.5, linetype = 2, alpha = 0.4) + geom_vline(xintercept = 0, linetype = 2, alpha = 0.4) +
   ylab("Number of variants") + xlab("Coefficient of variation")
 Coefficient_of_variation_plot
-ggsave(file = "Plots/Coefficient_of_variation_plot.pdf", Coefficient_of_variation_plot, height = 40, width = 80, units = "mm")
+ggsave(file = "Plots/Coefficient_of_variation_plot.pdf", Coefficient_of_variation_plot, height = 40, width = 60, units = "mm")
 
 cv_dataframe <- data.frame(dataset = c("Original","Composite"),
                            cv_below_pt5 = c(nrow(subset(combined_for_plotting_classes_4plus_orig, cv_orig > 0 & cv_orig < 0.5)),
@@ -1015,9 +1015,9 @@ cv_dataframe$dataset <- factor(cv_dataframe$dataset, levels = c("Original","Comp
 
 low_cv_bargraph <- ggplot() + theme(panel.grid.major.x = element_blank()) + labs(x = NULL, y = "Number of variants") +
   scale_fill_manual(values = c("Original" = "blue", "Composite" = "red")) +
-  geom_bar(data = cv_dataframe, aes(x = dataset, y = cv_below_pt5, fill = dataset), stat = "identity", alpha = 0.75)
+  geom_bar(data = cv_dataframe, aes(x = dataset, y = cv_below_pt5, fill = dataset), stat = "identity", alpha = 0.75, color = "black")
 low_cv_bargraph
-ggsave(file = "Plots/Low_CV_bargraph.pdf", low_cv_bargraph, height = 40, width = 80, units = "mm")
+ggsave(file = "Plots/Low_CV_bargraph.pdf", low_cv_bargraph, height = 30, width = 60, units = "mm")
 
 paste("There was a",round((cv_dataframe$cv_below_pt5[2] - cv_dataframe$cv_below_pt5[1]) / cv_dataframe$cv_below_pt5[1] * 100,1),"percent increase in the number of variants with a CV less than 0.5")
 
@@ -1126,16 +1126,13 @@ abundance_class_summary_melt <- melt(abundance_class_summary, id = "abundance_cl
 
 Abundance_class_original_composite <- ggplot() + theme(panel.grid.major.x = element_blank()) + labs(x = NULL, y = "Number of variants") +
   scale_fill_manual(values = c("Original" = "blue", "Composite" = "red")) +
-  geom_bar(data = abundance_class_summary_melt, aes(x = abundance_class, y = value, fill = variable), stat = "identity", alpha = 0.75, position_dodge())
+  geom_bar(data = abundance_class_summary_melt, aes(x = abundance_class, y = value, fill = variable), stat = "identity", alpha = 0.75, position_dodge(), color = "black")
 Abundance_class_original_composite
-ggsave(file = "Plots/Abundance_class_original_composite.pdf", Abundance_class_original_composite, height = 40, width = 120, units = "mm")
+ggsave(file = "Plots/Abundance_class_original_composite.pdf", Abundance_class_original_composite, height = 40, width = 90, units = "mm")
 ```
 
 ```{r Exporting the composite abundance data}
 write.table(file = "output_datatables/Composite_abundance_data.tsv", combined, sep = "\t", quote = F, row.names = F)
-
-combined_abund_act
-
 ```
 
 
@@ -2341,3 +2338,931 @@ ggplot() + scale_y_log10() + scale_x_continuous() +
   geom_text_repel(data = subset(han_ishioka3, !(variant %in% c("WT","NULL"))), aes(x = mean_abundance, y = mean_invitro_activity, label = variant), color = "red")
 ```
 
+```{r Compare abundance activity}
+
+individual_abundance <- original %>% filter(!is.na(egfp_geomean) & !(position %in% c(seq(1,13,1),45,124,129))) 
+## The first 13 residues constitute a PIP2 binding motif PMID: 25211206
+## Involvement of Val45 predicted in catalysis PMID: 20538496
+## Involvement of His93 in catalysis PMID: 20538496
+## Cys124 is a commonly known active site residue
+## Gly129 is found in the active site and mutation ablates catalysis PMID: 10597304
+
+
+individual_abundance2 <- merge(individual_abundance, pten_func, by = "variant") %>% select(variant, egfp_geomean, score_activity)
+individual_abundance2 <- rbind(individual_abundance2,c("WT",1,1))
+individual_abundance2$egfp_geomean <- as.numeric(individual_abundance2$egfp_geomean)
+individual_abundance2$score_activity <- as.numeric(individual_abundance2$score_activity)
+
+Abundance_MFI_vs_activity_score_scatterplot <- ggplot() + 
+  theme(legend.position = "none") + 
+  labs(x = "Geometric mean of EGFP-PTEN MFI", y = "Activity score") + 
+  scale_x_continuous(breaks = seq(0,1,0.25)) + 
+  scale_y_continuous(breaks = seq(0,1,0.25), expand = c(0,0.1)) +
+  geom_point(data = individual_abundance2, aes(x = egfp_geomean, y = score_activity), alpha = 0.5) +
+  geom_text_repel(data = individual_abundance2, aes(x = egfp_geomean, y = score_activity, label = variant), color = "red", size = 2, force = 3, max.overlaps = getOption("ggrepel.max.overlaps", default = 20))
+Abundance_MFI_vs_activity_score_scatterplot
+
+ggsave(file = "Plots/Abundance_MFI_vs_activity_score_scatterplot.pdf", Abundance_MFI_vs_activity_score_scatterplot, height = 1.75, width = 3.5)
+```
+
+```{r Seeing which PHTS variants were scored normal by the functional assay but low for abundance}
+
+low_abundance_phts <- complete_abund_act_missense2 %>% filter(abundance_class %in% c("low") & (asd == 1 | asd_dd == 1 | phts == 1 | clinvar_pathog))
+
+table(low_abundance_phts$abund_act_class)
+
+P_LP_variants_of_low_abundance_scatterplot <- ggplot() + 
+  theme(legend.position = "none") + 
+  labs(x = "Abundance score", y = "Activity score") + 
+  scale_color_manual(values = custom_colorscale2) + 
+  geom_point(data = low_abundance_phts, aes(x = score_abundance, y = score_activity, color = abund_act_class)) +
+  geom_text_repel(data = low_abundance_phts %>% filter(abund_act_class != "3_loss_of_both"),
+                  aes(x = score_abundance, y = score_activity, label = variant), size = 2)
+P_LP_variants_of_low_abundance_scatterplot
+
+ggsave(file = "Plots/P_LP_variants_of_low_abundance_scatterplot.pdf", P_LP_variants_of_low_abundance_scatterplot, height = 1.75, width = 3.5)
+
+## D252G associated with ASD and cannot rescue various molecular traits of neuronal cells (PMID: 29373119, 26579216)
+## D252G, N276S, D326N - Reduced protein stability of autism-associated PTEN mutants(PMIDL 25527629)
+## R173C, R173H, Y27S and R173C had reduced in-vitro phosphatase activity (PMID: 10866302)
+## R173C also had reduced phosphatase activity when expressed in U87-MG Glioma cell lines (PMID: 33828082)
+## K254T - Patient with K254T variant had reduced blood PTEN levels (PMID: 23066114)
+## G129R - Unlike the WT allele, the G129R variant was unable to regulate cell growth when expressed in U87 and U178 Glioma cell lines (PMID: 9356475)
+## P246L - Cells from a patient  heterozygous for germline P246L variant had reduced PTEN histochemistry and increased phosphorylated Akt. (PMID: 14566704)
+## M134T, T202I, D252G, N276S,D326N  had reduced abundance when overexpressed in U87MG Glioma cells. (PMID: 32150788). With the exception of T202I, the rest also had reduced phosphatase activity as compared to WT when overexpressed in human cells.
+
+
+## G251V observed in concurrent germ cell tumors and actue megakaryoblastic leukemia (PMID: 27148581, 24831771)
+## Nothing for 6: P96A, P95T, P96S, A120E, L247S, M270K
+## Existing functional evidence for 12: Y27S, G129R, M134T, R173C, R173H, T202I, P246L, G251V, D252G, K254T, N276S, D326N.
+
+```
+
+### Rescore the data based on codon-level information
+
+```{r Making the codon-level subassembly map}
+pten_seq <- "MTAIIKEIVSRNKRRYQEDGFDLDLTYIYPNIIAMGFPAERLEGVYRNNIDDVVRFLDSKHKNHYKIYNLCAERHYDTAKFNCRVAQYPFEDHNPPQLELIKPFCEDLDQWLSEDDNHVAAIHCKAGKGRTGVMICAYLLHRGKFLKAQEALDFYGEVRTRDKKGVTIPSQRRYVYYYSYLLKNHLDYRPVALLFHKMMFETIPMFSGGTCNPQFVVCQLKVKIYSSNSGPTRREDKFMYFEFPQPLPVCGDIKVEFFHKQNKMLKKDKMFHFWVNTFFIPGPEETSEKVENGSLCDQEIDSICSIERADNDKEYLVLTLTKNDLDKANKDKANRYFSPNFKVKLYFTKTVEEPSNPEASSSTSVTPDVSDNEPDHYRYSDTTDSDPENEPFDEDQHTQITKV"
+
+map_codon <- read.delim(file = "input_datatables/PTEN_variant_barcode_subassembly.tsv", sep = "\t", header= TRUE, stringsAsFactors = FALSE)
+
+map_codon$aa_pos_1 <- 0
+map_codon$aa_pos_2 <- 0
+map_codon$aa_pos_3 <- 0
+map_codon$aa_pos_4 <- 0
+for(x in 1:nrow(map)){
+  map_codon$aa_pos_1[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map_codon$value[x]), " \\(p"))[2],")"))[1]))
+  map_codon$aa_pos_2[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map_codon$value[x]), " \\(p"))[3],")"))[1]))
+  map_codon$aa_pos_3[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map_codon$value[x]), " \\(p"))[4],")"))[1]))
+  map_codon$aa_pos_4[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(map_codon$value[x]), " \\(p"))[5],")"))[1]))
+}
+
+## Get all unique amino acid change positions from above
+map_codon$change1 <- 0
+map_codon$change2 <- 0
+map_codon$change3 <- 0
+for(x in 1:nrow(map_codon)){
+  map_codon$change1[x] <- unique(c(map_codon$aa_pos_1[x], map_codon$aa_pos_2[x], map_codon$aa_pos_3[x], map_codon$aa_pos_4[x])[c(map_codon$aa_pos_1[x], map_codon$aa_pos_2[x], map_codon$aa_pos_3[x], map_codon$aa_pos_4[x]) != ""])[1]
+  map_codon$change2[x] <- unique(c(map_codon$aa_pos_1[x], map_codon$aa_pos_2[x], map_codon$aa_pos_3[x], map_codon$aa_pos_4[x])[c(map_codon$aa_pos_1[x], map_codon$aa_pos_2[x], map_codon$aa_pos_3[x], map_codon$aa_pos_4[x]) != ""])[2]
+  map_codon$change3[x] <- unique(c(map_codon$aa_pos_1[x], map_codon$aa_pos_2[x], map_codon$aa_pos_3[x], map_codon$aa_pos_4[x])[c(map_codon$aa_pos_1[x], map_codon$aa_pos_2[x], map_codon$aa_pos_3[x], map_codon$aa_pos_4[x]) != ""])[3]
+  if(is.na(map_codon$change1[x] & !is.na(map_codon$change2[x]))){map_codon$change1[x] <- map_codon$change2[x]}
+  if(is.na(map_codon$change2[x] & map_codon$change1[x] & !is.na(map_codon$change3[x]))){map_codon$change1[x] <- map_codon$change3[x]}
+}
+
+## Find the number of mutations for each variant
+map_codon$mut_number <- 0
+for(x in 1:nrow(map_codon)){
+  map_codon$mut_number[x] <- 3-sum(is.na(map_codon[x,c("change1","change2","change3")]))
+}
+
+##
+map_codon_singles <- subset(map_codon, mut_number == 1)
+map_codon_wt <- subset(map_codon, value == "_wt" & mut_number == 0)
+map_codon_syn <- subset(map_codon, !is.na(value) & value != "_wt" & mut_number == 0)
+
+map_codon_singles$start_aa3 <- "NA"
+map_codon_singles$end_aa3 <- "NA"
+
+tempy <- subset(map_codon_singles, aa_pos_1 == 1)
+
+for(x in 1:nrow(map_codon_syn)){
+  map_codon_syn$position1[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[1],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_codon_syn$position2[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[2],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_codon_syn$position3[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[3],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_codon_syn$position4[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[4],3,
+                                                              nchar(unlist(strsplit(x = as.character(map_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  map_codon_syn$change1[x] <- unique(c(map_codon_syn$position1[x], map_codon_syn$position2[x], map_codon_syn$position3[x], map_codon_syn$position4[x])[c(map_codon_syn$position1[x], map_codon_syn$position2[x], map_codon_syn$position3[x], map_codon_syn$position4[x]) != ""])[1]
+  map_codon_syn$change2[x] <- unique(c(map_codon_syn$position1[x], map_codon_syn$position2[x], map_codon_syn$position3[x], map_codon_syn$position4[x])[c(map_codon_syn$position1[x], map_codon_syn$position2[x], map_codon_syn$position3[x], map_codon_syn$position4[x]) != ""])[2]
+  map_codon_syn$change3[x] <- unique(c(map_codon_syn$position1[x], map_codon_syn$position2[x], map_codon_syn$position3[x], map_codon_syn$position4[x])[c(map_codon_syn$position1[x], map_codon_syn$position2[x], map_codon_syn$position3[x], map_codon_syn$position4[x]) != ""])[3]
+  map_codon_syn$start[x] <- substr(pten_seq,map_codon_syn$change1[x],map_codon_syn$change1[x])
+  map_codon_syn$end[x] <- map_codon_syn$start[x]
+  map_codon_syn$variant[x] <- paste(map_codon_syn$start[x],map_codon_syn$change1[x],map_codon_syn$end[x],sep="")
+}
+
+for(x in 1:nrow(map_codon_singles)){
+  map_codon_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = "\\(p."))[2],1,4)))
+  if(map_codon_singles$start_aa3[x] == "=), "){
+    map_codon_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = "\\(p."))[3],1,4)))
+  }
+  if(map_codon_singles$start_aa3[x] == "=), "){
+    map_codon_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = "\\(p."))[4],1,4)))
+  }
+  map_codon_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[1],nchar(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[1]) - 2,nchar(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[1]))
+  if(map_codon_singles$end_aa3[x] == "p.="){
+    map_codon_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[2],nchar(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[2]) - 2,nchar(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[2]))
+  }
+  if(map_codon_singles$end_aa3[x] == "p.="){
+    map_codon_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[3],nchar(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[3]) - 2,nchar(unlist(strsplit(x = as.character(map_codon_singles$value[x]), split = ")"))[3]))
+  }
+}
+
+for(x in 1:nrow(map_codon_singles)){
+  map_codon_singles$position[x] <- map_codon_singles$aa_pos_1[x]
+  if(map_codon_singles$position[x] == "" | is.na(map_codon_singles$position[x])){
+    map_codon_singles$position[x] <- map_codon_singles$aa_pos_2[x]
+  }
+}
+
+map_codon_singles$start <- "NA"
+map_codon_singles$end <- "NA"
+map_codon_singles$variant <- "NA"
+
+for(x in 1:nrow(map_codon_singles)){
+  map_codon_singles$start[x] <- to_single_notation(map_codon_singles$start_aa3[x])
+  map_codon_singles$end[x] <- to_single_notation(map_codon_singles$end_aa3[x])
+  map_codon_singles$variant[x] <- paste(map_codon_singles$start[x],map_codon_singles$position[x],map_codon_singles$end[x], sep="")
+}
+
+map_codon_nonsense <- subset(map_codon_singles, end == "X")
+map_codon_missense <- subset(map_codon_singles, end != "X")
+
+map_codon_syn$position <- map_codon_syn$position1
+map_codon_wt$class <- "wt"
+map_codon_wt$position <- 0
+map_codon_wt$start <- "Z"
+map_codon_wt$end <- "Z"
+map_codon_syn$class <- "syn"
+map_codon_nonsense$class <- "nonsense"
+map_codon_missense$class <- "missense"
+map_codon_wt$variant <- "wt"
+
+PTEN_library_variant_map_codon <- rbind(map_codon_wt[,c("barcode","value","variant","position","start","end","class")], map_codon_syn[,c("barcode","value","variant","position","start","end","class")],map_codon_nonsense[,c("barcode","value","variant","position","start","end","class")],map_codon_missense[,c("barcode","value","variant","position","start","end","class")])
+
+#write.csv(file = "output_datatables/PTEN_library_variant_map_codon.csv", PTEN_library_variant_map_codon, row.names = FALSE, quote = FALSE)
+
+```
+
+
+```{r e1s1_codon}
+e1s1_codon <- merge(e1s1_1a, e1s1_1b, by = "X", all = TRUE)
+e1s1_codon <- merge(e1s1_codon, e1s1_2a, by = "X", all = TRUE)
+e1s1_codon <- merge(e1s1_codon, e1s1_2b, by = "X", all = TRUE)
+e1s1_codon <- merge(e1s1_codon, e1s1_3a, by = "X", all = TRUE)
+e1s1_codon <- merge(e1s1_codon, e1s1_3b, by = "X", all = TRUE)
+e1s1_codon <- merge(e1s1_codon, e1s1_4a, by = "X", all = TRUE)
+e1s1_codon <- merge(e1s1_codon, e1s1_4b, by = "X", all = TRUE)
+colnames(e1s1_codon) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s1_codon <- merge(e1s1_codon, PTEN_library_variant_map_codon, by = "barcode", all = FALSE)
+e1s1_codon[is.na(e1s1_codon)] <- 0
+
+e1s1_codon <- e1s1_codon %>% group_by(value) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class), variant = unique(variant))
+
+e1s1_codon$b1 <- e1s1_codon$b1a + e1s1_codon$b1b; e1s1_codon$b2 <- e1s1_codon$b2a + e1s1_codon$b2b;e1s1_codon$b3 <- e1s1_codon$b3a + e1s1_codon$b3b; e1s1_codon$b4 <- e1s1_codon$b4a + e1s1_codon$b4b
+
+e1s1_codon$b1 <- e1s1_codon$b1 / sum(e1s1_codon$b1, na.rm = TRUE)
+e1s1_codon$b2 <- e1s1_codon$b2 / sum(e1s1_codon$b2, na.rm = TRUE)
+e1s1_codon$b3 <- e1s1_codon$b3 / sum(e1s1_codon$b3, na.rm = TRUE)
+e1s1_codon$b4 <- e1s1_codon$b4 / sum(e1s1_codon$b4, na.rm = TRUE)
+e1s1_codon$mean_freq <- (e1s1_codon$b1 + e1s1_codon$b2 + e1s1_codon$b3 + e1s1_codon$b4) / 4
+
+frequency_filter <- 1e-5 * 10^(1/4)
+e1s1_codon <- subset(e1s1_codon, mean_freq > 1e-5 * 10^(1/4))
+e1s1_codon <- subset(e1s1_codon, mean_freq != 0)
+e1s1_codon$weighted_ave <- (e1s1_codon$b1 * 0 + e1s1_codon$b2 * (1/3) + e1s1_codon$b3 * (2/3) + e1s1_codon$b4) /
+  rowSums(e1s1_codon[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e1s1_codon_weighted_ave.csv", e1s1_codon, row.names = FALSE, quote = FALSE)
+```
+
+
+```{r e1s2_codon}
+e1s2_codon <- merge(e1s2_1a, e1s2_1b, by = "X", all = TRUE)
+e1s2_codon <- merge(e1s2_codon, e1s2_2a, by = "X", all = TRUE)
+e1s2_codon <- merge(e1s2_codon, e1s2_2b, by = "X", all = TRUE)
+e1s2_codon <- merge(e1s2_codon, e1s2_3a, by = "X", all = TRUE)
+e1s2_codon <- merge(e1s2_codon, e1s2_3b, by = "X", all = TRUE)
+e1s2_codon <- merge(e1s2_codon, e1s2_4a, by = "X", all = TRUE)
+e1s2_codon <- merge(e1s2_codon, e1s2_4b, by = "X", all = TRUE)
+colnames(e1s2_codon) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s2_codon <- merge(e1s2_codon, PTEN_library_variant_map_codon, by = "barcode", all = FALSE)
+e1s2_codon[is.na(e1s2_codon)] <- 0
+
+e1s2_codon <- e1s2_codon %>% group_by(value) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class), variant = unique(variant))
+
+e1s2_codon$b1 <- e1s2_codon$b1a + e1s2_codon$b1b; e1s2_codon$b2 <- e1s2_codon$b2a + e1s2_codon$b2b;e1s2_codon$b3 <- e1s2_codon$b3a + e1s2_codon$b3b; e1s2_codon$b4 <- e1s2_codon$b4a + e1s2_codon$b4b
+
+e1s2_codon$b1 <- e1s2_codon$b1 / sum(e1s2_codon$b1, na.rm = TRUE)
+e1s2_codon$b2 <- e1s2_codon$b2 / sum(e1s2_codon$b2, na.rm = TRUE)
+e1s2_codon$b3 <- e1s2_codon$b3 / sum(e1s2_codon$b3, na.rm = TRUE)
+e1s2_codon$b4 <- e1s2_codon$b4 / sum(e1s2_codon$b4, na.rm = TRUE)
+e1s2_codon$mean_freq <- (e1s2_codon$b1 + e1s2_codon$b2 + e1s2_codon$b3 + e1s2_codon$b4) / 4
+e1s2_codon <- subset(e1s2_codon, mean_freq > 1e-5 * 10^(1/4))
+e1s2_codon <- subset(e1s2_codon, mean_freq != 0)
+e1s2_codon$weighted_ave <- (e1s2_codon$b1 * 0 + e1s2_codon$b2 * (1/3) + e1s2_codon$b3 * (2/3) + e1s2_codon$b4) /
+  rowSums(e1s2_codon[,c("b1","b2","b3","b4")])
+
+write.csv(file = "Output_datatables/e1s2_codon_weighted_ave.csv", e1s2_codon, row.names = FALSE, quote = FALSE)
+```
+
+```{r e1s3_codon}
+e1s3_codon <- merge(e1s3_1a, e1s3_1b, by = "X", all = TRUE)
+e1s3_codon <- merge(e1s3_codon, e1s3_2a, by = "X", all = TRUE)
+e1s3_codon <- merge(e1s3_codon, e1s3_2b, by = "X", all = TRUE)
+e1s3_codon <- merge(e1s3_codon, e1s3_3a, by = "X", all = TRUE)
+e1s3_codon <- merge(e1s3_codon, e1s3_3b, by = "X", all = TRUE)
+e1s3_codon <- merge(e1s3_codon, e1s3_4a, by = "X", all = TRUE)
+e1s3_codon <- merge(e1s3_codon, e1s3_4b, by = "X", all = TRUE)
+colnames(e1s3_codon) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s3_codon <- merge(e1s3_codon, PTEN_library_variant_map_codon, by = "barcode", all = FALSE)
+e1s3_codon[is.na(e1s3_codon)] <- 0
+
+e1s3_codon <- e1s3_codon %>% group_by(value) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class), variant = unique(variant))
+
+e1s3_codon$b1 <- e1s3_codon$b1a + e1s3_codon$b1b; e1s3_codon$b2 <- e1s3_codon$b2a + e1s3_codon$b2b;e1s3_codon$b3 <- e1s3_codon$b3a + e1s3_codon$b3b; e1s3_codon$b4 <- e1s3_codon$b4a + e1s3_codon$b4b
+
+e1s3_codon$b1 <- e1s3_codon$b1 / sum(e1s3_codon$b1, na.rm = TRUE)
+e1s3_codon$b2 <- e1s3_codon$b2 / sum(e1s3_codon$b2, na.rm = TRUE)
+e1s3_codon$b3 <- e1s3_codon$b3 / sum(e1s3_codon$b3, na.rm = TRUE)
+e1s3_codon$b4 <- e1s3_codon$b4 / sum(e1s3_codon$b4, na.rm = TRUE)
+e1s3_codon$mean_freq <- (e1s3_codon$b1 + e1s3_codon$b2 + e1s3_codon$b3 + e1s3_codon$b4) / 4
+e1s3_codon <- subset(e1s3_codon, mean_freq > 1e-5 * 10^(1/4))
+e1s3_codon <- subset(e1s3_codon, mean_freq != 0)
+e1s3_codon$weighted_ave <- (e1s3_codon$b1 * 0 + e1s3_codon$b2 * (1/3) + e1s3_codon$b3 * (2/3) + e1s3_codon$b4) /
+  rowSums(e1s3_codon[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e1s3_codon_weighted_ave.csv", e1s3_codon, row.names = FALSE, quote = FALSE)
+```
+
+```{r e1s4}
+e1s4_codon <- merge(e1s4_1a, e1s4_1b, by = "X", all = TRUE)
+e1s4_codon <- merge(e1s4_codon, e1s4_2a, by = "X", all = TRUE)
+e1s4_codon <- merge(e1s4_codon, e1s4_2b, by = "X", all = TRUE)
+e1s4_codon <- merge(e1s4_codon, e1s4_3a, by = "X", all = TRUE)
+e1s4_codon <- merge(e1s4_codon, e1s4_3b, by = "X", all = TRUE)
+e1s4_codon <- merge(e1s4_codon, e1s4_4a, by = "X", all = TRUE)
+e1s4_codon <- merge(e1s4_codon, e1s4_4b, by = "X", all = TRUE)
+colnames(e1s4_codon) <- c("barcode","b1a","b1b","b2a","b2b","b3a","b3b","b4a","b4b")
+e1s4_codon <- merge(e1s4_codon, PTEN_library_variant_map_codon, by = "barcode", all = FALSE)
+e1s4_codon[is.na(e1s4_codon)] <- 0
+
+e1s4_codon <- e1s4_codon %>% group_by(value) %>% summarize(b1a = sum(b1a), b1b = sum(b1b), b2a = sum(b2a), b2b = sum(b2b), b3a = sum(b3a), b3b = sum(b3b), b4a = sum(b4a), b4b = sum(b4b), class = unique(class), variant = unique(variant))
+
+e1s4_codon$b1 <- e1s4_codon$b1a + e1s4_codon$b1b; e1s4_codon$b2 <- e1s4_codon$b2a + e1s4_codon$b2b;e1s4_codon$b3 <- e1s4_codon$b3a + e1s4_codon$b3b; e1s4_codon$b4 <- e1s4_codon$b4a + e1s4_codon$b4b
+
+e1s4_codon$b1 <- e1s4_codon$b1 / sum(e1s4_codon$b1, na.rm = TRUE)
+e1s4_codon$b2 <- e1s4_codon$b2 / sum(e1s4_codon$b2, na.rm = TRUE)
+e1s4_codon$b3 <- e1s4_codon$b3 / sum(e1s4_codon$b3, na.rm = TRUE)
+e1s4_codon$b4 <- e1s4_codon$b4 / sum(e1s4_codon$b4, na.rm = TRUE)
+e1s4_codon$mean_freq <- (e1s4_codon$b1 + e1s4_codon$b2 + e1s4_codon$b3 + e1s4_codon$b4) / 4
+e1s4_codon <- subset(e1s4_codon, mean_freq > 1e-5 * 10^(1/4))
+e1s4_codon <- subset(e1s4_codon, mean_freq != 0)
+e1s4_codon$weighted_ave <- (e1s4_codon$b1 * 0 + e1s4_codon$b2 * (1/3) + e1s4_codon$b3 * (2/3) + e1s4_codon$b4) /
+  rowSums(e1s4_codon[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e1s4_codon_weighted_ave.csv", e1s4_codon, row.names = FALSE, quote = FALSE)
+```
+
+```{r e3s1_codon}
+e3s1_codon <- merge(e3s1_1a, e3s1_2a, by = "X", all = TRUE)
+e3s1_codon <- merge(e3s1_codon, e3s1_3a, by = "X", all = TRUE)
+e3s1_codon <- merge(e3s1_codon, e3s1_4a, by = "X", all = TRUE)
+colnames(e3s1_codon) <- c("barcode","b1","b2","b3","b4")
+e3s1_codon <- merge(e3s1_codon, PTEN_library_variant_map_codon, by = "barcode", all = FALSE)
+e3s1_codon[is.na(e3s1_codon)] <- 0
+
+e3s1_codon <- e3s1_codon %>% group_by(value) %>% summarize(b1 = sum(b1), b2 = sum(b2), b3 = sum(b3), b4 = sum(b4), class = unique(class), variant = unique(variant))
+
+e3s1_codon$b1 <- e3s1_codon$b1 / sum(e3s1_codon$b1, na.rm = TRUE)
+e3s1_codon$b2 <- e3s1_codon$b2 / sum(e3s1_codon$b2, na.rm = TRUE)
+e3s1_codon$b3 <- e3s1_codon$b3 / sum(e3s1_codon$b3, na.rm = TRUE)
+e3s1_codon$b4 <- e3s1_codon$b4 / sum(e3s1_codon$b4, na.rm = TRUE)
+e3s1_codon$mean_freq <- (e3s1_codon$b1 + e3s1_codon$b2 + e3s1_codon$b3 + e3s1_codon$b4) / 4
+e3s1_codon <- subset(e3s1_codon, mean_freq > 1e-5 * 10^(1/4))
+e3s1_codon <- subset(e3s1_codon, mean_freq != 0)
+e3s1_codon$weighted_ave <- (e3s1_codon$b1 * 0 + e3s1_codon$b2 * (1/3) + e3s1_codon$b3 * (2/3) + e3s1_codon$b4) /
+  rowSums(e3s1_codon[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e3s1_codon_weighted_ave.csv", e3s1_codon, row.names = FALSE, quote = FALSE)
+```
+
+```{r e3s2_codon}
+e3s2_codon <- merge(e3s2_1a, e3s2_2a, by = "X", all = TRUE)
+e3s2_codon <- merge(e3s2_codon, e3s2_3a, by = "X", all = TRUE)
+e3s2_codon <- merge(e3s2_codon, e3s2_4a, by = "X", all = TRUE)
+colnames(e3s2_codon) <- c("barcode","b1","b2","b3","b4")
+e3s2_codon <- merge(e3s2_codon, PTEN_library_variant_map_codon, by = "barcode", all = FALSE)
+e3s2_codon[is.na(e3s2_codon)] <- 0
+
+e3s2_codon <- e3s2_codon %>% group_by(value) %>% summarize(b1 = sum(b1), b2 = sum(b2), b3 = sum(b3), b4 = sum(b4), class = unique(class), variant = unique(variant))
+
+e3s2_codon$b1 <- e3s2_codon$b1 / sum(e3s2_codon$b1, na.rm = TRUE)
+e3s2_codon$b2 <- e3s2_codon$b2 / sum(e3s2_codon$b2, na.rm = TRUE)
+e3s2_codon$b3 <- e3s2_codon$b3 / sum(e3s2_codon$b3, na.rm = TRUE)
+e3s2_codon$b4 <- e3s2_codon$b4 / sum(e3s2_codon$b4, na.rm = TRUE)
+e3s2_codon$mean_freq <- (e3s2_codon$b1 + e3s2_codon$b2 + e3s2_codon$b3 + e3s2_codon$b4) / 4
+e3s2_codon <- subset(e3s2_codon, mean_freq > 1e-5 * 10^(1/4))
+e3s2_codon <- subset(e3s2_codon, mean_freq != 0)
+e3s2_codon$weighted_ave <- (e3s2_codon$b1 * 0 + e3s2_codon$b2 * (1/3) + e3s2_codon$b3 * (2/3) + e3s2_codon$b4) /
+  rowSums(e3s2_codon[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e3s2_codon_weighted_ave.csv", e3s2_codon, row.names = FALSE, quote = FALSE)
+```
+
+```{r e3s3_codon}
+e3s3_codon <- merge(e3s3_1a, e3s3_2a, by = "X", all = TRUE)
+e3s3_codon <- merge(e3s3_codon, e3s3_3a, by = "X", all = TRUE)
+e3s3_codon <- merge(e3s3_codon, e3s3_4a, by = "X", all = TRUE)
+colnames(e3s3_codon) <- c("barcode","b1","b2","b3","b4")
+e3s3_codon <- merge(e3s3_codon, PTEN_library_variant_map_codon, by = "barcode", all = FALSE)
+e3s3_codon[is.na(e3s3_codon)] <- 0
+
+e3s3_codon <- e3s3_codon %>% group_by(value) %>% summarize(b1 = sum(b1), b2 = sum(b2), b3 = sum(b3), b4 = sum(b4), class = unique(class), variant = unique(variant))
+
+e3s3_codon$b1 <- e3s3_codon$b1 / sum(e3s3_codon$b1, na.rm = TRUE)
+e3s3_codon$b2 <- e3s3_codon$b2 / sum(e3s3_codon$b2, na.rm = TRUE)
+e3s3_codon$b3 <- e3s3_codon$b3 / sum(e3s3_codon$b3, na.rm = TRUE)
+e3s3_codon$b4 <- e3s3_codon$b4 / sum(e3s3_codon$b4, na.rm = TRUE)
+e3s3_codon$mean_freq <- (e3s3_codon$b1 + e3s3_codon$b2 + e3s3_codon$b3 + e3s3_codon$b4) / 4
+e3s3_codon <- subset(e3s3_codon, mean_freq > 1e-5 * 10^(1/4))
+e3s3_codon <- subset(e3s3_codon, mean_freq != 0)
+e3s3_codon$weighted_ave <- (e3s3_codon$b1 * 0 + e3s3_codon$b2 * (1/3) + e3s3_codon$b3 * (2/3) + e3s3_codon$b4) /
+  rowSums(e3s3_codon[,c("b1","b2","b3","b4")])
+
+write.csv(file = "output_datatables/e3s3_codon_weighted_ave.csv", e3s3_codon, row.names = FALSE, quote = FALSE)
+```
+
+```{r Importing pre-calculated weighted averages and scaling}
+#e1s1_codon <- read.csv(file = "output_datatables/e1s1_codon_weighted_ave.csv", header = T, stringsAsFactors = F)
+#e1s2_codon <- read.csv(file = "output_datatables/e1s2_codon_weighted_ave.csv", header = T, stringsAsFactors = F)
+#e1s3_codon <- read.csv(file = "output_datatables/e1s3_codon_weighted_ave.csv", header = T, stringsAsFactors = F)
+#e1s4_codon <- read.csv(file = "output_datatables/e1s4_codon_weighted_ave.csv", header = T, stringsAsFactors = F)
+#e3s1_codon <- read.csv(file = "output_datatables/e3s1_codon_weighted_ave.csv", header = T, stringsAsFactors = F)
+#e3s2_codon <- read.csv(file = "output_datatables/e3s2_codon_weighted_ave.csv", header = T, stringsAsFactors = F)
+#e3s3_codon <- read.csv(file = "output_datatables/e3s3_codon_weighted_ave.csv", header = T, stringsAsFactors = F)
+
+e1s1_codon$position <- as.numeric(gsub("[A-Z]", "", e1s1_codon$variant))
+e1s1_codon$score1 <- (e1s1_codon$weighted_ave - median(subset(e1s1_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s1_codon, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s1_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e1s2_codon$position <- as.numeric(gsub("[A-Z]", "", e1s2_codon$variant))
+e1s2_codon$score2 <- (e1s2_codon$weighted_ave - median(subset(e1s2_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s2_codon, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s2_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e1s3_codon$position <- as.numeric(gsub("[A-Z]", "", e1s3_codon$variant))
+e1s3_codon$score3 <- (e1s3_codon$weighted_ave - median(subset(e1s3_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s3_codon, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s3_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e1s4_codon$position <- as.numeric(gsub("[A-Z]", "", e1s4_codon$variant))
+e1s4_codon$score4 <- (e1s4_codon$weighted_ave - median(subset(e1s4_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e1s4_codon, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e1s4_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e3s1_codon$position <- as.numeric(gsub("[A-Z]", "", e3s1_codon$variant))
+e3s1_codon$score5 <- (e3s1_codon$weighted_ave - median(subset(e3s1_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e3s1_codon, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e3s1_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e3s2_codon$position <- as.numeric(gsub("[A-Z]", "", e3s2_codon$variant))
+e3s2_codon$score6 <- (e3s2_codon$weighted_ave - median(subset(e3s2_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e3s2_codon, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e3s2_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+
+e3s3_codon$position <- as.numeric(gsub("[A-Z]", "", e3s3_codon$variant))
+e3s3_codon$score7 <- (e3s3_codon$weighted_ave - median(subset(e3s3_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE)) /
+  (median(subset(e3s3_codon, class == "wt")$weighted_ave, na.rm = TRUE) - median(subset(e3s3_codon, position > 50 & position < 350 & class == "nonsense")$weighted_ave, na.rm = TRUE))
+```
+
+```{r Combining stuff codon}
+replicates_codon <- merge(e1s1_codon[,c("value","weighted_ave")], e1s2_codon[,c("value","weighted_ave")], by = "value", all = TRUE)
+replicates_codon <- merge(replicates_codon, e1s3_codon[,c("value","weighted_ave")], by = "value", all = TRUE)
+replicates_codon <- merge(replicates_codon, e1s4_codon[,c("value","weighted_ave")], by = "value", all = TRUE)
+replicates_codon <- merge(replicates_codon, e3s1_codon[,c("value","weighted_ave")], by = "value", all = TRUE)
+replicates_codon <- merge(replicates_codon, e3s2_codon[,c("value","weighted_ave")], by = "value", all = TRUE)
+replicates_codon <- merge(replicates_codon, e3s3_codon[,c("value","weighted_ave")], by = "value", all = TRUE)
+
+colnames(replicates_codon) <- c("value","e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")
+
+replicates_codon$average <- rowMeans(replicates_codon[,c("e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")], na.rm = TRUE)
+replicates_codon$count <- rowSums(cbind(!is.na(replicates_codon$e1s1),!is.na(replicates_codon$e1s2),!is.na(replicates_codon$e1s3),!is.na(replicates_codon$e1s4),!is.na(replicates_codon$e3s1),!is.na(replicates_codon$e3s2),!is.na(replicates_codon$e3s3)))
+
+replicates_codon$sd <- rowMeans(cbind(abs(replicates_codon$average-replicates_codon$e1s1), abs(replicates_codon$average-replicates_codon$e1s2)
+                                , abs(replicates_codon$average-replicates_codon$e1s3), abs(replicates_codon$average-replicates_codon$e1s4),
+                                abs(replicates_codon$average-replicates_codon$e3s1),abs(replicates_codon$average-replicates_codon$e3s2),abs(replicates_codon$average-replicates_codon$e3s3)), na.rm = T)
+```
+
+
+```{r Fill in - Need to extract individual variants from codon-level data}
+## Need to extract individual variants from here
+
+replicates_codon$aa_pos_1 <- 0
+replicates_codon$aa_pos_2 <- 0
+replicates_codon$aa_pos_3 <- 0
+replicates_codon$aa_pos_4 <- 0
+for(x in 1:nrow(replicates_codon)){
+  replicates_codon$aa_pos_1[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(replicates_codon$value[x]), " \\(p"))[2],")"))[1]))
+  replicates_codon$aa_pos_2[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(replicates_codon$value[x]), " \\(p"))[3],")"))[1]))
+  replicates_codon$aa_pos_3[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(replicates_codon$value[x]), " \\(p"))[4],")"))[1]))
+  replicates_codon$aa_pos_4[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(replicates_codon$value[x]), " \\(p"))[5],")"))[1]))
+}
+
+## Get all unique amino acid change positions from above
+replicates_codon$change1 <- 0
+replicates_codon$change2 <- 0
+replicates_codon$change3 <- 0
+for(x in 1:nrow(replicates_codon)){
+  replicates_codon$change1[x] <- unique(c(replicates_codon$aa_pos_1[x], replicates_codon$aa_pos_2[x], replicates_codon$aa_pos_3[x], replicates_codon$aa_pos_4[x])[c(replicates_codon$aa_pos_1[x], replicates_codon$aa_pos_2[x], replicates_codon$aa_pos_3[x], replicates_codon$aa_pos_4[x]) != ""])[1]
+  replicates_codon$change2[x] <- unique(c(replicates_codon$aa_pos_1[x], replicates_codon$aa_pos_2[x], replicates_codon$aa_pos_3[x], replicates_codon$aa_pos_4[x])[c(replicates_codon$aa_pos_1[x], replicates_codon$aa_pos_2[x], replicates_codon$aa_pos_3[x], replicates_codon$aa_pos_4[x]) != ""])[2]
+  replicates_codon$change3[x] <- unique(c(replicates_codon$aa_pos_1[x], replicates_codon$aa_pos_2[x], replicates_codon$aa_pos_3[x], replicates_codon$aa_pos_4[x])[c(replicates_codon$aa_pos_1[x], replicates_codon$aa_pos_2[x], replicates_codon$aa_pos_3[x], replicates_codon$aa_pos_4[x]) != ""])[3]
+  if(is.na(replicates_codon$change1[x] & !is.na(replicates_codon$change2[x]))){replicates_codon$change1[x] <- replicates_codon$change2[x]}
+  if(is.na(replicates_codon$change2[x] & replicates_codon$change1[x] & !is.na(replicates_codon$change3[x]))){replicates_codon$change1[x] <- replicates_codon$change3[x]}
+}
+
+## Find the number of mutations for each variant
+replicates_codon$mut_number <- 0
+for(x in 1:nrow(replicates_codon)){
+  replicates_codon$mut_number[x] <- 3-sum(is.na(replicates_codon[x,c("change1","change2","change3")]))
+}
+
+##
+replicates_codon_singles <- subset(replicates_codon, mut_number == 1)
+replicates_codon_wt <- subset(replicates_codon, value == "_wt" & mut_number == 0)
+replicates_codon_syn <- subset(replicates_codon, !is.na(value) & value != "_wt" & mut_number == 0)
+
+replicates_codon_singles$start_aa3 <- "NA"
+replicates_codon_singles$end_aa3 <- "NA"
+
+tempy <- subset(replicates_codon_singles, aa_pos_1 == 1)
+
+for(x in 1:nrow(replicates_codon_syn)){
+  replicates_codon_syn$position1[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[1],3,
+                                                              nchar(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  replicates_codon_syn$position2[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[2],3,
+                                                              nchar(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  replicates_codon_syn$position3[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[3],3,
+                                                              nchar(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  replicates_codon_syn$position4[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[4],3,
+                                                              nchar(unlist(strsplit(x = as.character(replicates_codon_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  replicates_codon_syn$change1[x] <- unique(c(replicates_codon_syn$position1[x], replicates_codon_syn$position2[x], replicates_codon_syn$position3[x], replicates_codon_syn$position4[x])[c(replicates_codon_syn$position1[x], replicates_codon_syn$position2[x], replicates_codon_syn$position3[x], replicates_codon_syn$position4[x]) != ""])[1]
+  replicates_codon_syn$change2[x] <- unique(c(replicates_codon_syn$position1[x], replicates_codon_syn$position2[x], replicates_codon_syn$position3[x], replicates_codon_syn$position4[x])[c(replicates_codon_syn$position1[x], replicates_codon_syn$position2[x], replicates_codon_syn$position3[x], replicates_codon_syn$position4[x]) != ""])[2]
+  replicates_codon_syn$change3[x] <- unique(c(replicates_codon_syn$position1[x], replicates_codon_syn$position2[x], replicates_codon_syn$position3[x], replicates_codon_syn$position4[x])[c(replicates_codon_syn$position1[x], replicates_codon_syn$position2[x], replicates_codon_syn$position3[x], replicates_codon_syn$position4[x]) != ""])[3]
+  replicates_codon_syn$start[x] <- substr(pten_seq,replicates_codon_syn$change1[x],replicates_codon_syn$change1[x])
+  replicates_codon_syn$end[x] <- replicates_codon_syn$start[x]
+  replicates_codon_syn$variant[x] <- paste(replicates_codon_syn$start[x],replicates_codon_syn$change1[x],replicates_codon_syn$end[x],sep="")
+}
+
+for(x in 1:nrow(replicates_codon_singles)){
+  replicates_codon_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = "\\(p."))[2],1,4)))
+  if(replicates_codon_singles$start_aa3[x] == "=), "){
+    replicates_codon_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = "\\(p."))[3],1,4)))
+  }
+  if(replicates_codon_singles$start_aa3[x] == "=), "){
+    replicates_codon_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = "\\(p."))[4],1,4)))
+  }
+  replicates_codon_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[1],nchar(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[1]) - 2,nchar(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[1]))
+  if(replicates_codon_singles$end_aa3[x] == "p.="){
+    replicates_codon_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[2],nchar(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[2]) - 2,nchar(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[2]))
+  }
+  if(replicates_codon_singles$end_aa3[x] == "p.="){
+    replicates_codon_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[3],nchar(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[3]) - 2,nchar(unlist(strsplit(x = as.character(replicates_codon_singles$value[x]), split = ")"))[3]))
+  }
+}
+
+for(x in 1:nrow(replicates_codon_singles)){
+  replicates_codon_singles$position[x] <- replicates_codon_singles$aa_pos_1[x]
+  if(replicates_codon_singles$position[x] == "" | is.na(replicates_codon_singles$position[x])){
+    replicates_codon_singles$position[x] <- replicates_codon_singles$aa_pos_2[x]
+  }
+}
+
+replicates_codon_singles$start <- "NA"
+replicates_codon_singles$end <- "NA"
+replicates_codon_singles$variant <- "NA"
+
+for(x in 1:nrow(replicates_codon_singles)){
+  replicates_codon_singles$start[x] <- to_single_notation(replicates_codon_singles$start_aa3[x])
+  replicates_codon_singles$end[x] <- to_single_notation(replicates_codon_singles$end_aa3[x])
+  replicates_codon_singles$variant[x] <- paste(replicates_codon_singles$start[x],replicates_codon_singles$position[x],replicates_codon_singles$end[x], sep="")
+}
+
+replicates_codon_nonsense <- subset(replicates_codon_singles, end == "X")
+replicates_codon_missense <- subset(replicates_codon_singles, end != "X")
+
+replicates_codon_syn$position <- replicates_codon_syn$position1
+replicates_codon_wt$class <- "wt"
+replicates_codon_wt$position <- 0
+replicates_codon_wt$start <- "Z"
+replicates_codon_wt$end <- "Z"
+replicates_codon_syn$class <- "syn"
+replicates_codon_nonsense$class <- "nonsense"
+replicates_codon_missense$class <- "missense"
+replicates_codon_wt$variant <- "wt"
+
+replicates_codon_combined <- rbind(replicates_codon_wt[,c("value","variant","position","start","end","class","average","sd","count","e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")], replicates_codon_syn[,c("value","variant","position","start","end","class","average","sd","count","e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")],replicates_codon_nonsense[,c("value","variant","position","start","end","class","average","sd","count","e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")],replicates_codon_missense[,c("value","variant","position","start","end","class","average","sd","count","e1s1","e1s2","e1s3","e1s4","e3s1","e3s2","e3s3")])
+```
+
+
+```{r Getting codon level scores all combined}
+replicates_codon_combined$start <- substr(gsub("[0-9]","",replicates_codon_combined$variant), 1,1)
+replicates_codon_combined$end <- substr(gsub("[0-9]","",replicates_codon_combined$variant), 2,2)
+replicates_codon_combined$position <- gsub("[^0-9]","",replicates_codon_combined$variant)
+
+replicates_codon_combined[replicates_codon_combined$variant == "wt","start"] <- "Z"
+replicates_codon_combined[replicates_codon_combined$variant == "wt","position"] <- "0"
+replicates_codon_combined[replicates_codon_combined$variant == "wt","end"] <- "Z"
+
+## Let's try to put in some abundance classifications here
+replicates_codon_combined$se <- replicates_codon_combined$sd / sqrt(replicates_codon_combined$count)
+replicates_codon_combined$lower_ci <- replicates_codon_combined$average - qnorm(0.975) * replicates_codon_combined$se
+replicates_codon_combined$upper_ci <- replicates_codon_combined$average + qnorm(0.975) * replicates_codon_combined$se
+replicates_codon_combined["average" == "NaN"] <- NA
+
+synonymous_lowest_5percent <- quantile(subset(replicates_codon_combined, class == "syn")$average, 0.05, na.rm = TRUE)
+synonymous_median <- quantile(subset(replicates_codon_combined, class == "syn")$average, 0.5, na.rm = TRUE)
+
+replicates_codon_combined$position <- as.numeric(as.character(replicates_codon_combined$position))
+
+replicates_codon_combined$score9 <- (replicates_codon_combined$e1s1 - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s1, na.rm = TRUE)) / 
+  (median(subset(replicates_codon_combined, class == "wt")$e1s1, na.rm = TRUE) - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s1, na.rm = TRUE))
+
+replicates_codon_combined$score10 <- (replicates_codon_combined$e1s2 - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s2, na.rm = TRUE)) / 
+  (median(subset(replicates_codon_combined, class == "wt")$e1s2, na.rm = TRUE) - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s2, na.rm = TRUE))
+
+replicates_codon_combined$score11 <- (replicates_codon_combined$e1s3 - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s3, na.rm = TRUE)) / 
+  (median(subset(replicates_codon_combined, class == "wt")$e1s3, na.rm = TRUE) - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s3, na.rm = TRUE))
+
+replicates_codon_combined$score12 <- (replicates_codon_combined$e1s4 - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s4, na.rm = TRUE)) / 
+  (median(subset(replicates_codon_combined, class == "wt")$e1s4, na.rm = TRUE) - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e1s4, na.rm = TRUE))
+
+replicates_codon_combined$score13 <- (replicates_codon_combined$e3s1 - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e3s1, na.rm = TRUE)) / 
+  (median(subset(replicates_codon_combined, class == "wt")$e3s1, na.rm = TRUE) - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e3s1, na.rm = TRUE))
+
+replicates_codon_combined$score14 <- (replicates_codon_combined$e3s2 - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e3s2, na.rm = TRUE)) / 
+  (median(subset(replicates_codon_combined, class == "wt")$e3s2, na.rm = TRUE) - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e3s2, na.rm = TRUE))
+
+replicates_codon_combined$score15 <- (replicates_codon_combined$e3s3 - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e3s3, na.rm = TRUE)) / 
+  (median(subset(replicates_codon_combined, class == "wt")$e3s3, na.rm = TRUE) - median(subset(replicates_codon_combined, class == "nonsense" & position > 50 & position < 350)$e3s3, na.rm = TRUE))
+```
+
+
+# Set the universal filters for both the PTEN and TPMT data
+```{r Set the filters for PTEN and TPMT data}
+#### Within the experiment, a variant had to be present a sum of this frequency across the four bins to be included in the analysis
+frequency_filter <- 1e-5 * 10^(1/4)
+frequency_filter <- 1*10^(-4.75)
+#### Across the experiments, a variant had to be observed (passing the frequency filter) at least this number of experiments to be included in the analysis
+experiment_filter <- 1
+```
+
+
+# Import and score PTEN experiments
+```{r Importing PTEN data, warning = FALSE}
+pten_precursor <- read.table(file = "input_datatables/170530_PTEN_variants.m1", sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+
+pten_raw <- pten_precursor[,c("X","variant_SeqID_NT","variant_SeqID_AA","exp1_c_0", "exp1_c_1", "exp1_c_2", "exp1_c_3", "exp2_c_0", "exp2_c_1", "exp2_c_2", "exp2_c_3", "exp3_c_0", "exp3_c_1", "exp3_c_2", "exp3_c_3", "exp4_c_0", "exp4_c_1", "exp4_c_2", "exp4_c_3", "exp5_c_0", "exp5_c_1", "exp5_c_2", "exp5_c_3", "exp6_c_0", "exp6_c_1", "exp6_c_2", "exp6_c_3", "exp7_c_0", "exp7_c_1", "exp7_c_2", "exp7_c_3", "exp8_c_0", "exp8_c_1", "exp8_c_2", "exp8_c_3")]
+colnames(pten_raw) <- c("value","variant_SeqID_NT","variant_SeqID_AA","exp1_bin1_count", "exp1_bin2_count", "exp1_bin3_count", "exp1_bin4_count", "exp2_bin1_count", "exp2_bin2_count", "exp2_bin3_count", "exp2_bin4_count", "exp3_bin1_count", "exp3_bin2_count", "exp3_bin3_count", "exp3_bin4_count", "exp4_bin1_count", "exp4_bin2_count", "exp4_bin3_count", "exp4_bin4_count", "exp5_bin1_count", "exp5_bin2_count", "exp5_bin3_count", "exp5_bin4_count", "exp6_bin1_count", "exp6_bin2_count", "exp6_bin3_count", "exp6_bin4_count", "exp7_bin1_count", "exp7_bin2_count", "exp7_bin3_count", "exp7_bin4_count", "exp8_bin1_count", "exp8_bin2_count", "exp8_bin3_count", "exp8_bin4_count")
+pten_raw$position <- gsub("[^0-9]","",pten_raw$variant_SeqID_AA)
+pten_raw$end <- gsub("[0-9-]","",pten_raw$variant_SeqID_AA)
+pten_raw$end <- gsub("[*]","X",pten_raw$end)
+
+pten_raw$codon <- gsub("[A-Z]","",pten_raw$variant_SeqID_NT)
+for(x in 1:nrow(pten_raw)){
+  pten_raw$codon[x] <- unlist(strsplit(unlist(strsplit(x = pten_raw$codon[x], split = c("-")))[1],","))[1]
+}
+pten_raw$codon_residue <- round((as.numeric(pten_raw$codon) + 1)/3)
+
+pten_seq <- "MTAIIKEIVSRNKRRYQEDGFDLDLTYIYPNIIAMGFPAERLEGVYRNNIDDVVRFLDSKHKNHYKIYNLCAERHYDTAKFNCRVAQYPFEDHNPPQLELIKPFCEDLDQWLSEDDNHVAAIHCKAGKGRTGVMICAYLLHRGKFLKAQEALDFYGEVRTRDKKGVTIPSQRRYVYYYSYLLKNHLDYRPVALLFHKMMFETIPMFSGGTCNPQFVVCQLKVKIYSSNSGPTRREDKFMYFEFPQPLPVCGDIKVEFFHKQNKMLKKDKMFHFWVNTFFIPGPEETSEKVENGSLCDQEIDSICSIERADNDKEYLVLTLTKNDLDKANKDKANRYFSPNFKVKLYFTKTVEEPSNPEASSSTSVTPDVSDNEPDHYRYSDTTDSDPENEPFDEDQHTQITKV"
+
+for(x in 1:nrow(pten_raw)){
+  pten_raw$start <- substr(pten_seq,1,1)
+}
+
+pten_raw$class = "missense"
+pten_raw[pten_raw$codon == 999,"class"] <- "wt"
+pten_raw[pten_raw$end == "WTAA" & pten_raw$codon != 999,"class"] <- "synonymous"
+pten_raw[pten_raw$end == "X","class"] <- "nonsense"
+
+for(x in 1:nrow(pten_raw)){
+  if(pten_raw$class[x] == "synonymous"){
+    pten_raw$position[x] <- pten_raw$codon_residue[x]
+    pten_raw$end[x] <- substr(pten_seq,pten_raw$position[x],pten_raw$position[x])
+  }
+}
+
+pten_raw$start = "NA"
+for(x in 1:nrow(pten_raw)){
+  pten_raw$start[x] <- substr(pten_seq,pten_raw$position[x],pten_raw$position[x])
+}
+
+pten_raw[pten_raw$class == "wt","end"] <- "Z"
+pten_raw[pten_raw$class == "wt","start"] <- "Z"
+pten_raw[pten_raw$class == "wt","position"] <- "0"
+pten_raw$variant <- paste(pten_raw$start,pten_raw$position,pten_raw$end,sep="")
+
+## Add together all the bin frequencies to make a list of total variant frequency amount fo reach experiment
+#library(plyr)
+
+pten_raw[is.na(pten_raw)] <- 0
+pten_raw3 <- pten_raw
+
+## Now let's start getting frequencies
+pten_raw3$exp1_bin1_freq <- pten_raw3$exp1_bin1_count / sum(pten_raw3$exp1_bin1_count, na.rm = TRUE)
+pten_raw3$exp1_bin2_freq <- pten_raw3$exp1_bin2_count / sum(pten_raw3$exp1_bin2_count, na.rm = TRUE)
+pten_raw3$exp1_bin3_freq <- pten_raw3$exp1_bin3_count / sum(pten_raw3$exp1_bin3_count, na.rm = TRUE)
+pten_raw3$exp1_bin4_freq <- pten_raw3$exp1_bin4_count / sum(pten_raw3$exp1_bin4_count, na.rm = TRUE)
+pten_raw3$exp2_bin1_freq <- pten_raw3$exp2_bin1_count / sum(pten_raw3$exp2_bin1_count, na.rm = TRUE)
+pten_raw3$exp2_bin2_freq <- pten_raw3$exp2_bin2_count / sum(pten_raw3$exp2_bin2_count, na.rm = TRUE)
+pten_raw3$exp2_bin3_freq <- pten_raw3$exp2_bin3_count / sum(pten_raw3$exp2_bin3_count, na.rm = TRUE)
+pten_raw3$exp2_bin4_freq <- pten_raw3$exp2_bin4_count / sum(pten_raw3$exp2_bin4_count, na.rm = TRUE)
+pten_raw3$exp3_bin1_freq <- pten_raw3$exp3_bin1_count / sum(pten_raw3$exp3_bin1_count, na.rm = TRUE)
+pten_raw3$exp3_bin2_freq <- pten_raw3$exp3_bin2_count / sum(pten_raw3$exp3_bin2_count, na.rm = TRUE)
+pten_raw3$exp3_bin3_freq <- pten_raw3$exp3_bin3_count / sum(pten_raw3$exp3_bin3_count, na.rm = TRUE)
+pten_raw3$exp3_bin4_freq <- pten_raw3$exp3_bin4_count / sum(pten_raw3$exp3_bin4_count, na.rm = TRUE)
+pten_raw3$exp4_bin1_freq <- pten_raw3$exp4_bin1_count / sum(pten_raw3$exp4_bin1_count, na.rm = TRUE)
+pten_raw3$exp4_bin2_freq <- pten_raw3$exp4_bin2_count / sum(pten_raw3$exp4_bin2_count, na.rm = TRUE)
+pten_raw3$exp4_bin3_freq <- pten_raw3$exp4_bin3_count / sum(pten_raw3$exp4_bin3_count, na.rm = TRUE)
+pten_raw3$exp4_bin4_freq <- pten_raw3$exp4_bin4_count / sum(pten_raw3$exp4_bin4_count, na.rm = TRUE)
+pten_raw3$exp5_bin1_freq <- pten_raw3$exp5_bin1_count / sum(pten_raw3$exp5_bin1_count, na.rm = TRUE)
+pten_raw3$exp5_bin2_freq <- pten_raw3$exp5_bin2_count / sum(pten_raw3$exp5_bin2_count, na.rm = TRUE)
+pten_raw3$exp5_bin3_freq <- pten_raw3$exp5_bin3_count / sum(pten_raw3$exp5_bin3_count, na.rm = TRUE)
+pten_raw3$exp5_bin4_freq <- pten_raw3$exp5_bin4_count / sum(pten_raw3$exp5_bin4_count, na.rm = TRUE)
+pten_raw3$exp6_bin1_freq <- pten_raw3$exp6_bin1_count / sum(pten_raw3$exp6_bin1_count, na.rm = TRUE)
+pten_raw3$exp6_bin2_freq <- pten_raw3$exp6_bin2_count / sum(pten_raw3$exp6_bin2_count, na.rm = TRUE)
+pten_raw3$exp6_bin3_freq <- pten_raw3$exp6_bin3_count / sum(pten_raw3$exp6_bin3_count, na.rm = TRUE)
+pten_raw3$exp6_bin4_freq <- pten_raw3$exp6_bin4_count / sum(pten_raw3$exp6_bin4_count, na.rm = TRUE)
+pten_raw3$exp7_bin1_freq <- pten_raw3$exp7_bin1_count / sum(pten_raw3$exp7_bin1_count, na.rm = TRUE)
+pten_raw3$exp7_bin2_freq <- pten_raw3$exp7_bin2_count / sum(pten_raw3$exp7_bin2_count, na.rm = TRUE)
+pten_raw3$exp7_bin3_freq <- pten_raw3$exp7_bin3_count / sum(pten_raw3$exp7_bin3_count, na.rm = TRUE)
+pten_raw3$exp7_bin4_freq <- pten_raw3$exp7_bin4_count / sum(pten_raw3$exp7_bin4_count, na.rm = TRUE)
+pten_raw3$exp8_bin1_freq <- pten_raw3$exp8_bin1_count / sum(pten_raw3$exp8_bin1_count, na.rm = TRUE)
+pten_raw3$exp8_bin2_freq <- pten_raw3$exp8_bin2_count / sum(pten_raw3$exp8_bin2_count, na.rm = TRUE)
+pten_raw3$exp8_bin3_freq <- pten_raw3$exp8_bin3_count / sum(pten_raw3$exp8_bin3_count, na.rm = TRUE)
+pten_raw3$exp8_bin4_freq <- pten_raw3$exp8_bin4_count / sum(pten_raw3$exp8_bin4_count, na.rm = TRUE)
+
+## Getting total counts and total freqs
+pten_raw3$exp1_total_count <- rowSums(pten_raw3[,c("exp1_bin1_count", "exp1_bin2_count", "exp1_bin3_count", "exp1_bin4_count")], na.rm = TRUE)
+pten_raw3$exp2_total_count <- rowSums(pten_raw3[,c("exp2_bin1_count", "exp2_bin2_count", "exp2_bin3_count", "exp2_bin4_count")], na.rm = TRUE)
+pten_raw3$exp3_total_count <- rowSums(pten_raw3[,c("exp3_bin1_count", "exp3_bin2_count", "exp3_bin3_count", "exp3_bin4_count")], na.rm = TRUE)
+pten_raw3$exp4_total_count <- rowSums(pten_raw3[,c("exp4_bin1_count", "exp4_bin2_count", "exp4_bin3_count", "exp4_bin4_count")], na.rm = TRUE)
+pten_raw3$exp5_total_count <- rowSums(pten_raw3[,c("exp5_bin1_count", "exp5_bin2_count", "exp5_bin3_count", "exp5_bin4_count")], na.rm = TRUE)
+pten_raw3$exp6_total_count <- rowSums(pten_raw3[,c("exp6_bin1_count", "exp6_bin2_count", "exp6_bin3_count", "exp6_bin4_count")], na.rm = TRUE)
+pten_raw3$exp7_total_count <- rowSums(pten_raw3[,c("exp7_bin1_count", "exp7_bin2_count", "exp7_bin3_count", "exp7_bin4_count")], na.rm = TRUE)
+pten_raw3$exp8_total_count <- rowSums(pten_raw3[,c("exp8_bin1_count", "exp8_bin2_count", "exp8_bin3_count", "exp8_bin4_count")], na.rm = TRUE)
+
+pten_raw3$exp1_total_freq <- rowSums(pten_raw3[,c("exp1_bin1_freq", "exp1_bin2_freq", "exp1_bin3_freq", "exp1_bin4_freq")], na.rm = TRUE)
+pten_raw3$exp2_total_freq <- rowSums(pten_raw3[,c("exp2_bin1_freq", "exp2_bin2_freq", "exp2_bin3_freq", "exp2_bin4_freq")], na.rm = TRUE)
+pten_raw3$exp3_total_freq <- rowSums(pten_raw3[,c("exp3_bin1_freq", "exp3_bin2_freq", "exp3_bin3_freq", "exp3_bin4_freq")], na.rm = TRUE)
+pten_raw3$exp4_total_freq <- rowSums(pten_raw3[,c("exp4_bin1_freq", "exp4_bin2_freq", "exp4_bin3_freq", "exp4_bin4_freq")], na.rm = TRUE)
+pten_raw3$exp5_total_freq <- rowSums(pten_raw3[,c("exp5_bin1_freq", "exp5_bin2_freq", "exp5_bin3_freq", "exp5_bin4_freq")], na.rm = TRUE)
+pten_raw3$exp6_total_freq <- rowSums(pten_raw3[,c("exp6_bin1_freq", "exp6_bin2_freq", "exp6_bin3_freq", "exp6_bin4_freq")], na.rm = TRUE)
+pten_raw3$exp7_total_freq <- rowSums(pten_raw3[,c("exp7_bin1_freq", "exp7_bin2_freq", "exp7_bin3_freq", "exp7_bin4_freq")], na.rm = TRUE)
+pten_raw3$exp8_total_freq <- rowSums(pten_raw3[,c("exp8_bin1_freq", "exp8_bin2_freq", "exp8_bin3_freq", "exp8_bin4_freq")], na.rm = TRUE)
+
+pten_raw3$exp1_total_countfreq <- (pten_raw3$exp1_bin1_count + pten_raw3$exp1_bin2_count + pten_raw3$exp1_bin3_count + pten_raw3$exp1_bin4_count)/(sum(pten_raw3$exp1_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp1_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp1_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp1_bin4_count, na.rm = TRUE))
+pten_raw3$exp2_total_countfreq <- (pten_raw3$exp2_bin1_count + pten_raw3$exp2_bin2_count + pten_raw3$exp2_bin3_count + pten_raw3$exp2_bin4_count)/(sum(pten_raw3$exp2_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp2_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp2_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp2_bin4_count, na.rm = TRUE))
+pten_raw3$exp3_total_countfreq <- (pten_raw3$exp3_bin1_count + pten_raw3$exp3_bin2_count + pten_raw3$exp3_bin3_count + pten_raw3$exp3_bin4_count)/(sum(pten_raw3$exp3_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp3_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp3_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp3_bin4_count, na.rm = TRUE))
+pten_raw3$exp4_total_countfreq <- (pten_raw3$exp4_bin1_count + pten_raw3$exp4_bin2_count + pten_raw3$exp4_bin3_count + pten_raw3$exp4_bin4_count)/(sum(pten_raw3$exp4_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp4_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp4_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp4_bin4_count, na.rm = TRUE))
+pten_raw3$exp5_total_countfreq <- (pten_raw3$exp5_bin1_count + pten_raw3$exp5_bin2_count + pten_raw3$exp5_bin3_count + pten_raw3$exp5_bin4_count)/(sum(pten_raw3$exp5_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp5_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp5_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp5_bin4_count, na.rm = TRUE))
+pten_raw3$exp6_total_countfreq <- (pten_raw3$exp6_bin1_count + pten_raw3$exp6_bin2_count + pten_raw3$exp6_bin3_count + pten_raw3$exp6_bin4_count)/(sum(pten_raw3$exp6_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp6_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp6_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp6_bin4_count, na.rm = TRUE))
+pten_raw3$exp7_total_countfreq <- (pten_raw3$exp7_bin1_count + pten_raw3$exp7_bin2_count + pten_raw3$exp7_bin3_count + pten_raw3$exp7_bin4_count)/(sum(pten_raw3$exp7_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp7_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp7_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp7_bin4_count, na.rm = TRUE))
+pten_raw3$exp8_total_countfreq <- (pten_raw3$exp8_bin1_count + pten_raw3$exp8_bin2_count + pten_raw3$exp8_bin3_count + pten_raw3$exp8_bin4_count)/(sum(pten_raw3$exp8_bin1_count, na.rm = TRUE) + sum(pten_raw3$exp8_bin2_count, na.rm = TRUE) + sum(pten_raw3$exp8_bin3_count, na.rm = TRUE) + sum(pten_raw3$exp8_bin4_count, na.rm = TRUE))
+```
+
+```{r Doing some more analysis}
+pten_raw3$exp1_w_ave <- NA
+pten_raw3$exp2_w_ave <- NA
+pten_raw3$exp3_w_ave <- NA
+pten_raw3$exp4_w_ave <- NA
+pten_raw3$exp5_w_ave <- NA
+pten_raw3$exp6_w_ave <- NA
+pten_raw3$exp7_w_ave <- NA
+pten_raw3$exp8_w_ave <- NA
+pten_raw3$median_w_ave <- NA
+
+#frequency_filter = 1
+
+for(x in 1:nrow(pten_raw3)){
+  if(pten_raw3$exp1_total_countfreq[x] >= frequency_filter){pten_raw3$exp1_w_ave[x] <- (pten_raw3$exp1_bin1_freq[x] * 0.25 + pten_raw3$exp1_bin2_freq[x] * 0.5 + pten_raw3$exp1_bin3_freq[x] * 0.75 + pten_raw3$exp1_bin4_freq[x])/pten_raw3$exp1_total_freq[x]}
+  if(pten_raw3$exp2_total_countfreq[x] >= frequency_filter){pten_raw3$exp2_w_ave[x] <- (pten_raw3$exp2_bin1_freq[x] * 0.25 + pten_raw3$exp2_bin2_freq[x] * 0.5 + pten_raw3$exp2_bin3_freq[x] * 0.75 + pten_raw3$exp2_bin4_freq[x])/pten_raw3$exp2_total_freq[x]}
+  if(pten_raw3$exp3_total_countfreq[x] >= frequency_filter){pten_raw3$exp3_w_ave[x] <- (pten_raw3$exp3_bin1_freq[x] * 0.25 + pten_raw3$exp3_bin2_freq[x] * 0.5 + pten_raw3$exp3_bin3_freq[x] * 0.75 + pten_raw3$exp3_bin4_freq[x])/pten_raw3$exp3_total_freq[x]}
+  if(pten_raw3$exp4_total_countfreq[x] >= frequency_filter){pten_raw3$exp4_w_ave[x] <- (pten_raw3$exp4_bin1_freq[x] * 0.25 + pten_raw3$exp4_bin2_freq[x] * 0.5 + pten_raw3$exp4_bin3_freq[x] * 0.75 + pten_raw3$exp4_bin4_freq[x])/pten_raw3$exp4_total_freq[x]}
+  if(pten_raw3$exp5_total_countfreq[x] >= frequency_filter){pten_raw3$exp5_w_ave[x] <- (pten_raw3$exp5_bin1_freq[x] * 0.25 + pten_raw3$exp5_bin2_freq[x] * 0.5 + pten_raw3$exp5_bin3_freq[x] * 0.75 + pten_raw3$exp5_bin4_freq[x])/pten_raw3$exp5_total_freq[x]}
+  if(pten_raw3$exp6_total_countfreq[x] >= frequency_filter){pten_raw3$exp6_w_ave[x] <- (pten_raw3$exp6_bin1_freq[x] * 0.25 + pten_raw3$exp6_bin2_freq[x] * 0.5 + pten_raw3$exp6_bin3_freq[x] * 0.75 + pten_raw3$exp6_bin4_freq[x])/pten_raw3$exp6_total_freq[x]}
+  if(pten_raw3$exp7_total_countfreq[x] >= frequency_filter){pten_raw3$exp7_w_ave[x] <- (pten_raw3$exp7_bin1_freq[x] * 0.25 + pten_raw3$exp7_bin2_freq[x] * 0.5 + pten_raw3$exp7_bin3_freq[x] * 0.75 + pten_raw3$exp7_bin4_freq[x])/pten_raw3$exp7_total_freq[x]}
+  if(pten_raw3$exp8_total_countfreq[x] >= frequency_filter){pten_raw3$exp8_w_ave[x] <- (pten_raw3$exp8_bin1_freq[x] * 0.25 + pten_raw3$exp8_bin2_freq[x] * 0.5 + pten_raw3$exp8_bin3_freq[x] * 0.75 + pten_raw3$exp8_bin4_freq[x])/pten_raw3$exp8_total_freq[x]}
+  pten_raw3$median_w_ave[x] <- median(as.numeric(pten_raw3[x,c("exp1_w_ave","exp2_w_ave","exp3_w_ave","exp4_w_ave","exp5_w_ave","exp6_w_ave","exp7_w_ave","exp8_w_ave")]), na.rm = TRUE)
+}
+
+pten_raw3[is.na(pten_raw3)] <- 0
+
+pten_raw3$position <- as.numeric(gsub("[^0-9]", "", pten_raw3$variant))
+pten_raw3[pten_raw3$variant == "Z0Z", "position"] <- 0
+pten_raw3$start <- substr(pten_raw3$variant,1,1)
+pten_raw3$end <- substr(pten_raw3$variant,nchar(pten_raw3$variant),nchar(pten_raw3$variant))
+
+pten_raw3$class <- NA
+for(x in 1:nrow(pten_raw3)){
+  if(pten_raw3[x,"end"] == "X"){pten_raw3[x,"class"] <- "nonsense"}
+  if(pten_raw3[x,"end"] != "X" & pten_raw3[x,"end"] != "Z"){pten_raw3[x,"class"] <- "missense"}
+  if(pten_raw3[x,"start"] == pten_raw3[x,"end"]){pten_raw3[x,"class"] <- "synonymous"}
+  if(pten_raw3[x,"variant"] == "Z0Z"){pten_raw3[x,"class"] <- "wt"}
+}
+
+pten_raw3[pten_raw3 == 0] <- NA
+pten_raw3[pten_raw3 == "NaN"] <- NA
+
+### Adding an expt filter here
+pten_raw3$expts <- rowSums(!is.na(pten_raw3[,c("exp1_w_ave","exp2_w_ave","exp3_w_ave","exp4_w_ave","exp5_w_ave","exp6_w_ave","exp7_w_ave","exp8_w_ave")]))
+pten_raw3 <- subset(pten_raw3, expts >= experiment_filter)
+
+pten_raw3$score1 <- (pten_raw3$exp1_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp1_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp1_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp1_w_ave, na.rm = TRUE))
+
+pten_raw3$score2 <- (pten_raw3$exp2_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp2_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp2_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp2_w_ave, na.rm = TRUE))
+
+pten_raw3$score3 <- (pten_raw3$exp3_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp3_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp3_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp3_w_ave, na.rm = TRUE))
+
+pten_raw3$score4 <- (pten_raw3$exp4_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp4_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp4_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp4_w_ave, na.rm = TRUE))
+
+pten_raw3$score5 <- (pten_raw3$exp5_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp5_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp5_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp5_w_ave, na.rm = TRUE))
+
+pten_raw3$score6 <- (pten_raw3$exp6_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp6_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp6_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp6_w_ave, na.rm = TRUE))
+
+pten_raw3$score7 <- (pten_raw3$exp7_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp7_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp7_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp7_w_ave, na.rm = TRUE))
+
+pten_raw3$score8 <- (pten_raw3$exp8_w_ave - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp8_w_ave, na.rm = TRUE)) / 
+  (median(subset(pten_raw3, class == "wt")$exp8_w_ave, na.rm = TRUE) - median(subset(pten_raw3, class == "nonsense" & position > 50 & position < 350)$exp8_w_ave, na.rm = TRUE))
+
+pten_raw3$score <- rowMeans(pten_raw3[,c("score1","score2","score3","score4","score5","score6","score7","score8")], na.rm = TRUE)
+
+pten_raw3$sd <- apply(pten_raw3[,c("score1","score2","score3","score4","score5","score6","score7","score8")],1,sd, na.rm = TRUE)
+
+pten_raw3$se <- pten_raw3$sd / sqrt(pten_raw3$expts)
+pten_raw3[pten_raw3 == "NaN"] <- NA
+
+synonymous_lowest_5percent <- quantile(subset(pten_raw3, class == "synonymous")$score, 0.05, na.rm = TRUE)
+synonymous_median <- quantile(subset(pten_raw3, class == "synonymous")$score, 0.5, na.rm = TRUE)
+synonymous_highest <- quantile(subset(pten_raw3, class == "synonymous")$score, 0.95, na.rm = TRUE)
+
+pten_variants_orig <- pten_raw3[,c("value","variant","class","position","score","sd","expts","score1","score2","score3","score4","score5","score6","score7","score8")]
+```
+
+```{r Now combining the fill in and original data at the codon level}
+codon_level_fully_combined <- merge(pten_variants_orig[,c("value","score","score1","score2","score3","score4","score5","score6","score7","score8")], replicates_codon_combined[,c("value","variant","class","position","count","score9","score10","score11","score12","score13","score14","score15")], by = "value", all = T)
+
+codon_level_fully_combined$aa_pos_1 <- 0
+codon_level_fully_combined$aa_pos_2 <- 0
+codon_level_fully_combined$aa_pos_3 <- 0
+codon_level_fully_combined$aa_pos_4 <- 0
+for(x in 1:nrow(codon_level_fully_combined)){
+  codon_level_fully_combined$aa_pos_1[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(codon_level_fully_combined$value[x]), " \\(p"))[2],")"))[1]))
+  codon_level_fully_combined$aa_pos_2[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(codon_level_fully_combined$value[x]), " \\(p"))[3],")"))[1]))
+  codon_level_fully_combined$aa_pos_3[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(codon_level_fully_combined$value[x]), " \\(p"))[4],")"))[1]))
+  codon_level_fully_combined$aa_pos_4[x] <- as.double(gsub("[^0-9]","",unlist(strsplit(unlist(strsplit(as.character(codon_level_fully_combined$value[x]), " \\(p"))[5],")"))[1]))
+}
+
+## Get all unique amino acid change positions from above
+codon_level_fully_combined$change1 <- 0
+codon_level_fully_combined$change2 <- 0
+codon_level_fully_combined$change3 <- 0
+for(x in 1:nrow(codon_level_fully_combined)){
+  codon_level_fully_combined$change1[x] <- unique(c(codon_level_fully_combined$aa_pos_1[x], codon_level_fully_combined$aa_pos_2[x], codon_level_fully_combined$aa_pos_3[x], codon_level_fully_combined$aa_pos_4[x])[c(codon_level_fully_combined$aa_pos_1[x], codon_level_fully_combined$aa_pos_2[x], codon_level_fully_combined$aa_pos_3[x], codon_level_fully_combined$aa_pos_4[x]) != ""])[1]
+  codon_level_fully_combined$change2[x] <- unique(c(codon_level_fully_combined$aa_pos_1[x], codon_level_fully_combined$aa_pos_2[x], codon_level_fully_combined$aa_pos_3[x], codon_level_fully_combined$aa_pos_4[x])[c(codon_level_fully_combined$aa_pos_1[x], codon_level_fully_combined$aa_pos_2[x], codon_level_fully_combined$aa_pos_3[x], codon_level_fully_combined$aa_pos_4[x]) != ""])[2]
+  codon_level_fully_combined$change3[x] <- unique(c(codon_level_fully_combined$aa_pos_1[x], codon_level_fully_combined$aa_pos_2[x], codon_level_fully_combined$aa_pos_3[x], codon_level_fully_combined$aa_pos_4[x])[c(codon_level_fully_combined$aa_pos_1[x], codon_level_fully_combined$aa_pos_2[x], codon_level_fully_combined$aa_pos_3[x], codon_level_fully_combined$aa_pos_4[x]) != ""])[3]
+  if(is.na(codon_level_fully_combined$change1[x] & !is.na(codon_level_fully_combined$change2[x]))){codon_level_fully_combined$change1[x] <- codon_level_fully_combined$change2[x]}
+  if(is.na(codon_level_fully_combined$change2[x] & codon_level_fully_combined$change1[x] & !is.na(codon_level_fully_combined$change3[x]))){codon_level_fully_combined$change1[x] <- codon_level_fully_combined$change3[x]}
+}
+
+## Find the number of mutations for each variant
+codon_level_fully_combined$mut_number <- 0
+for(x in 1:nrow(codon_level_fully_combined)){
+  codon_level_fully_combined$mut_number[x] <- 3-sum(is.na(codon_level_fully_combined[x,c("change1","change2","change3")]))
+}
+
+##
+codon_level_fully_combined_singles <- subset(codon_level_fully_combined, mut_number == 1)
+codon_level_fully_combined_wt <- subset(codon_level_fully_combined, value == "_wt" & mut_number == 0)
+codon_level_fully_combined_syn <- subset(codon_level_fully_combined, !is.na(value) & value != "_wt" & mut_number == 0)
+
+codon_level_fully_combined_singles$start_aa3 <- "NA"
+codon_level_fully_combined_singles$end_aa3 <- "NA"
+
+tempy <- subset(codon_level_fully_combined_singles, aa_pos_1 == 1)
+
+for(x in 1:nrow(codon_level_fully_combined_syn)){
+  codon_level_fully_combined_syn$position1[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[1],3,
+                                                              nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  codon_level_fully_combined_syn$position2[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[2],3,
+                                                              nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  codon_level_fully_combined_syn$position3[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[3],3,
+                                                              nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  codon_level_fully_combined_syn$position4[x] <- as.integer(as.numeric(substr(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[4],3,
+                                                              nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_syn$value[x]), split = "\\(p."))[1])-4))/3 - 1/6) + 1
+  codon_level_fully_combined_syn$change1[x] <- unique(c(codon_level_fully_combined_syn$position1[x], codon_level_fully_combined_syn$position2[x], codon_level_fully_combined_syn$position3[x], codon_level_fully_combined_syn$position4[x])[c(codon_level_fully_combined_syn$position1[x], codon_level_fully_combined_syn$position2[x], codon_level_fully_combined_syn$position3[x], codon_level_fully_combined_syn$position4[x]) != ""])[1]
+  codon_level_fully_combined_syn$change2[x] <- unique(c(codon_level_fully_combined_syn$position1[x], codon_level_fully_combined_syn$position2[x], codon_level_fully_combined_syn$position3[x], codon_level_fully_combined_syn$position4[x])[c(codon_level_fully_combined_syn$position1[x], codon_level_fully_combined_syn$position2[x], codon_level_fully_combined_syn$position3[x], codon_level_fully_combined_syn$position4[x]) != ""])[2]
+  codon_level_fully_combined_syn$change3[x] <- unique(c(codon_level_fully_combined_syn$position1[x], codon_level_fully_combined_syn$position2[x], codon_level_fully_combined_syn$position3[x], codon_level_fully_combined_syn$position4[x])[c(codon_level_fully_combined_syn$position1[x], codon_level_fully_combined_syn$position2[x], codon_level_fully_combined_syn$position3[x], codon_level_fully_combined_syn$position4[x]) != ""])[3]
+  codon_level_fully_combined_syn$start[x] <- substr(pten_seq,codon_level_fully_combined_syn$change1[x],codon_level_fully_combined_syn$change1[x])
+  codon_level_fully_combined_syn$end[x] <- codon_level_fully_combined_syn$start[x]
+  codon_level_fully_combined_syn$variant[x] <- paste(codon_level_fully_combined_syn$start[x],codon_level_fully_combined_syn$change1[x],codon_level_fully_combined_syn$end[x],sep="")
+}
+
+for(x in 1:nrow(codon_level_fully_combined_singles)){
+  codon_level_fully_combined_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = "\\(p."))[2],1,4)))
+  if(codon_level_fully_combined_singles$start_aa3[x] == "=), "){
+    codon_level_fully_combined_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = "\\(p."))[3],1,4)))
+  }
+  if(codon_level_fully_combined_singles$start_aa3[x] == "=), "){
+    codon_level_fully_combined_singles$start_aa3[x] <- as.character(gsub("[0-9]","",substr(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = "\\(p."))[4],1,4)))
+  }
+  codon_level_fully_combined_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[1],nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[1]) - 2,nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[1]))
+  if(codon_level_fully_combined_singles$end_aa3[x] == "p.="){
+    codon_level_fully_combined_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[2],nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[2]) - 2,nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[2]))
+  }
+  if(codon_level_fully_combined_singles$end_aa3[x] == "p.="){
+    codon_level_fully_combined_singles$end_aa3[x] <- substr(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[3],nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[3]) - 2,nchar(unlist(strsplit(x = as.character(codon_level_fully_combined_singles$value[x]), split = ")"))[3]))
+  }
+}
+
+for(x in 1:nrow(codon_level_fully_combined_singles)){
+  codon_level_fully_combined_singles$position[x] <- codon_level_fully_combined_singles$aa_pos_1[x]
+  if(codon_level_fully_combined_singles$position[x] == "" | is.na(codon_level_fully_combined_singles$position[x])){
+    codon_level_fully_combined_singles$position[x] <- codon_level_fully_combined_singles$aa_pos_2[x]
+  }
+}
+
+codon_level_fully_combined_singles$start <- "NA"
+codon_level_fully_combined_singles$end <- "NA"
+codon_level_fully_combined_singles$variant <- "NA"
+
+for(x in 1:nrow(codon_level_fully_combined_singles)){
+  codon_level_fully_combined_singles$start[x] <- to_single_notation(codon_level_fully_combined_singles$start_aa3[x])
+  codon_level_fully_combined_singles$end[x] <- to_single_notation(codon_level_fully_combined_singles$end_aa3[x])
+  codon_level_fully_combined_singles$variant[x] <- paste(codon_level_fully_combined_singles$start[x],codon_level_fully_combined_singles$position[x],codon_level_fully_combined_singles$end[x], sep="")
+}
+
+codon_level_fully_combined_nonsense <- subset(codon_level_fully_combined_singles, end == "X")
+codon_level_fully_combined_missense <- subset(codon_level_fully_combined_singles, end != "X")
+
+codon_level_fully_combined_syn$position <- codon_level_fully_combined_syn$position1
+codon_level_fully_combined_wt$class <- "wt"
+codon_level_fully_combined_wt$position <- 0
+codon_level_fully_combined_wt$start <- "Z"
+codon_level_fully_combined_wt$end <- "Z"
+codon_level_fully_combined_syn$class <- "syn"
+codon_level_fully_combined_nonsense$class <- "nonsense"
+codon_level_fully_combined_missense$class <- "missense"
+codon_level_fully_combined_wt$variant <- "wt"
+
+PTEN_library_variant_codon_level_fully_combined <- rbind(codon_level_fully_combined_wt[,c("value","variant","score","score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15")], codon_level_fully_combined_syn[,c("value","variant","score","score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15")],codon_level_fully_combined_nonsense[,c("value","variant","score","score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15")],codon_level_fully_combined_missense[,c("value","variant","score","score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15")])
+```
+
+
+```{r}
+codon_score_collapsed_orig <- PTEN_library_variant_codon_level_fully_combined %>% filter(!is.na(score)) %>% mutate(count = 1)
+codon_score_collapsed_orig2 <- codon_score_collapsed_orig %>% group_by(variant) %>% summarize(mean_orig = mean(score, na.rm = T), sd_orig = sd(score, na.rm = T), count_orig = sum(count))
+  
+PTEN_library_variant_codon_level_fully_combined$combined_score <- rowMeans(PTEN_library_variant_codon_level_fully_combined[,c("score1","score2","score3","score4","score5","score6","score7","score8","score9","score10","score11","score12","score13","score14","score15")], na.rm = TRUE)
+
+codon_score_collapsed_combined <- PTEN_library_variant_codon_level_fully_combined %>% mutate(count = 1) %>% group_by(variant) %>% summarize(mean_combined = mean(combined_score, na.rm = T), sd_combined = sd(combined_score, na.rm = T), count_combined = sum(count))
+
+
+codon_score_collapsed_orig_multiple <- codon_score_collapsed_orig2 %>% filter(count_orig >= 2)
+codon_score_collapsed_orig_multiple$cv_orig <- codon_score_collapsed_orig_multiple$sd_orig / codon_score_collapsed_orig_multiple$mean_orig
+
+codon_score_collapsed_combined_multiple <- codon_score_collapsed_combined %>% filter(count_combined >= 2)
+codon_score_collapsed_combined_multiple$cv_combined <- codon_score_collapsed_combined_multiple$sd_combined / codon_score_collapsed_combined_multiple$mean_combined
+
+multiple_codon_analysis <- merge(codon_score_collapsed_orig_multiple, codon_score_collapsed_combined_multiple, by = "variant", all = T)
+
+Coefficient_of_variation_plot_codon <- 
+ggplot() + theme_bw() + 
+  scale_x_continuous(limits = c(-0.25,1.8)) +
+  geom_histogram(data = multiple_codon_analysis, aes(x = cv_orig), fill = "blue", alpha = 0.5, color = "blue", binwidth = 0.05) +
+  geom_histogram(data = multiple_codon_analysis, aes(x = cv_combined), fill = "red", alpha = 0.5, color = "red", binwidth = 0.05) +
+  geom_vline(xintercept = 0.5, linetype = 2, alpha = 0.4) + geom_vline(xintercept = 0, linetype = 2, alpha = 0.4) +
+  ylab("Number of variants") + xlab("Coefficient of variation")
+Coefficient_of_variation_plot_codon
+ggsave(file = "Plots/Coefficient_of_variation_plot_codon.pdf", Coefficient_of_variation_plot_codon, height = 40, width = 60, units = "mm")
+
+paste("There were", nrow(codon_score_collapsed_orig_multiple), "variants in the original data set that were scored based on the mean of two or more unique codon scores")
+
+paste("The median coefficient of variation in the mean scores of amino acid variants encoded by two or more codons is", round(median(codon_score_collapsed_orig_multiple$cv_orig),2))
+
+paste("There were", nrow(codon_score_collapsed_combined_multiple), "variants in the composite data set that were scored based on the mean of two or more unique codon scores")
+
+paste("The median coefficient of variation in the mean scores of amino acid variants encoded by two or more codons is", round(median(codon_score_collapsed_combined_multiple$cv_combined),2))
+```
